@@ -1,0 +1,74 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.class
+
+# Packaging and distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Configuration, Credentials & Private Keys
+.env
+.env.*
+!.env.example
+config.yaml
+.freecompute.yaml
+.relayforge.yaml
+.image_server_url
+*.pem
+*.key
+
+# Local Agent Runtime State, Undo Snapshots & Journals
+.qwen_harness/
+.freecompute/
+.relayforge/
+*.log
+
+# Generated Output & Media Artifacts
+output/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp4
+
+# Model Weights & Large Binary Checkpoints
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+
+# Jupyter Notebook & Interactive State
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Testing & Coverage Artifacts
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+scratch/
+update_nb.py
+
+# Temporary & Editor Artifacts
+*.tmp
+*.bak
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini

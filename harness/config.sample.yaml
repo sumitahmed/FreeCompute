@@ -1,0 +1,29 @@
+# harness/config.sample.yaml — Sample configuration for local coding harness
+# Copy to config.yaml and update with your Kaggle session details.
+
+# URL of your Kaggle supervisor endpoint:
+# If using Tailscale: http://100.x.y.z:8081
+# If using Cloudflare: https://xxxx.trycloudflare.com
+# If testing locally: http://127.0.0.1:8081
+remote_url: "http://127.0.0.1:8081"
+
+# The secret Bearer token configured in the Kaggle notebook
+api_key: ""
+
+# Registered model alias in llama-server
+model_alias: "qwen3.8-27b-huihui-abliterated-q4"
+
+# Maximum context window (dual T4 proven at 65,536 tokens)
+max_context_tokens: 65536
+
+# Timeout for long-running model prefill/generation in seconds
+request_timeout_seconds: 900
+
+# Transport bridge mode: 'tailscale' (recommended) or 'cloudflare'
+transport: "tailscale"
+
+# Local workspace path (authoritative source of truth)
+workspace_root: "."
+
+# Local persistent state directory
+journal_dir: ".qwen_harness"
