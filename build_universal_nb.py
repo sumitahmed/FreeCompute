@@ -35,59 +35,107 @@ def add_code(source):
     })
 
 # Cell 1: Intro
-add_md("""# Universal Dual-GPU Model Server for Kaggle & Remote Compute
+add_md("""# ⚡ FreeCompute — Universal Dual-GPU Model Server
 
-**Default Model:** Huihui Qwen3.8-27B-Abliterated Q4 on Kaggle Dual Tesla T4 GPUs (30 GiB VRAM)  
-**Compatibility:** Universal GGUF configuration (customizable for GLM, Llama-3, DeepSeek, Mistral, or single-GPU environments like Colab A100/L4).  
+**Local-first AI pair programming powered by free remote GPU compute.**
+
+- **Default Model:** Huihui Qwen3.8-27B-Abliterated Q4 on Kaggle Dual Tesla T4 GPUs (30 GB VRAM).
+- **Universal Architecture:** Swap in Qwen 2.5 Coder 32B, DeepSeek-R1 Distill 32B, Mistral, GLM, or any GGUF from Hugging Face by uncommenting presets in **Cell 2**.
+- **Security:** Model runs remotely on Kaggle; all file inspection, edits, approvals, and terminal execution stay 100% strictly local on your PC.
 
 ### Kaggle Session Settings:
 - **Accelerator:** `GPU T4 x2`
 - **Internet:** `ON`
-- **Persistence:** `None` or `Variables and Files` (scratch is in `/kaggle/tmp`)
+- **Persistence:** `None` or `Variables and Files`
 
-### Key Capabilities:
-1. **Instant Boot Support (~30s):** Automatically detects attached private Kaggle Datasets (e.g. prebuilt `llama-server` and model weights). If attached, startup takes ~30 seconds.
-2. **Cold Start Fallback (~6 mins):** If datasets are not attached, compiles `llama.cpp` (pinned commit `2b129cc` with `-DGGML_CUDA_NO_VMM=ON`) and downloads weights into scratch automatically.
-3. **Supervisor & Auth Gateway:** Token-authenticated reverse proxy on port `8081` with watchdog auto-restart, container uptime reporting, and dual-GPU telemetry.
-4. **Secure Transport:** Supports **Tailscale Userspace WireGuard** (zero public attack surface) or **Cloudflare Tunnel** with Bearer token authentication.
+---
+### Quick Instructions:
+1. Verify **Accelerator: GPU T4 x2** and **Internet: ON** in the right panel.
+2. Select your model preset in **Cell 2** (default is Qwen 3.8-27B Abliterated).
+3. Click **Run All** (or run cells 1 through 8 in sequence).
+4. Copy the `freecompute --remote-url ...` command printed in **Cell 8** and run it in your local terminal!
 """)
 
-# Cell 2: Universal Config
+# Cell 2: Universal Config with Presets
 add_code("""# ==============================================================================
-# 1. UNIVERSAL RUNTIME CONFIGURATION
-# Defaulted to verified Huihui Qwen3.8-27B setup. Modify below for any other model!
+# 1. MODEL SELECTION & RUNTIME CONFIGURATION
+# Uncomment any preset below to switch models, or specify any Hugging Face GGUF!
 # ==============================================================================
 import secrets
 
-CONFIG = {
-    # Model Identity & Checkpoint
+# ------------------------------------------------------------------------------
+# PRESET 1: Qwen 3.8-27B Abliterated (DEFAULT)
+# Uncensored / abliterated, strong reasoning and coding, 64K context.
+# ------------------------------------------------------------------------------
+MODEL_PRESET = {
     "REPO_ID": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF",
     "FILENAME": "Huihui-Qwen3.8-27B-abliterated-UD-DW-Q4_K_M.gguf",
     "REVISION": "3f101cd22b7999228bbd5d79a33975414eb9758b",
     "MODEL_ALIAS": "qwen3.8-27b-huihui-abliterated-q4",
+    "CTX_SIZE": 65536,
+}
 
-    # Context & Engine Limits
-    "CTX_SIZE": 65536,         # 64K context proven on Dual T4 (9.2GB / 10.3GB VRAM)
+# ------------------------------------------------------------------------------
+# PRESET 2: Qwen 2.5 Coder 32B Instruct
+# Premier open coding model for deep architectural refactoring.
+# ------------------------------------------------------------------------------
+# MODEL_PRESET = {
+#     "REPO_ID": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
+#     "FILENAME": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+#     "REVISION": "main",
+#     "MODEL_ALIAS": "qwen2.5-coder-32b",
+#     "CTX_SIZE": 49152,
+# }
+
+# ------------------------------------------------------------------------------
+# PRESET 3: DeepSeek-R1 Distill Qwen 32B
+# Intense reasoning and mathematical problem solving.
+# ------------------------------------------------------------------------------
+# MODEL_PRESET = {
+#     "REPO_ID": "unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+#     "FILENAME": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+#     "REVISION": "main",
+#     "MODEL_ALIAS": "deepseek-r1-distill-32b",
+#     "CTX_SIZE": 32768,
+# }
+
+# ------------------------------------------------------------------------------
+# PRESET 4: Mistral Small 24B Instruct 2501
+# Fast, low-latency, great conversational agent.
+# ------------------------------------------------------------------------------
+# MODEL_PRESET = {
+#     "REPO_ID": "bartowski/mistral-small-24b-instruct-2501-GGUF",
+#     "FILENAME": "mistral-small-24b-instruct-2501-Q4_K_M.gguf",
+#     "REVISION": "main",
+#     "MODEL_ALIAS": "mistral-small-24b",
+#     "CTX_SIZE": 32768,
+# }
+
+CONFIG = {
+    **MODEL_PRESET,
+
+    # Dual-GPU layer split settings (50/50 across both Tesla T4s)
     "N_GPU_LAYERS": 999,       # Offload all layers to GPUs
     "SPLIT_MODE": "layer",     # 'layer' splits layers across GPUs (CUDA0 + CUDA1)
-    "TENSOR_SPLIT": "1,1",     # 50/50 layer split across two T4s
+    "TENSOR_SPLIT": "1,1",     # 50/50 layer balance across dual T4s
     "BATCH_SIZE": 512,
     "UBATCH_SIZE": 128,
     "CACHE_TYPE_K": "f16",
     "CACHE_TYPE_V": "f16",
 
-    # Ports & Security
+    # Ports & Security Gateway
     "SUPERVISOR_PORT": 8081,
     "LLAMA_PORT": 8080,
-    "API_KEY": secrets.token_hex(16),  # Dynamically generated session Bearer token
+    "API_KEY": secrets.token_hex(16),  # Session Bearer token
 
-    # Secure Transport Bridge: 'cloudflare' (default, zero setup) or 'tailscale'
+    # Network Transport Bridge: 'cloudflare' (default, zero setup) or 'tailscale'
     "TRANSPORT": "cloudflare",
     "TAILSCALE_AUTHKEY": "",   # Optional: paste your tskey-auth-... if using Tailscale
 }
 
-print(f"Configured model: {CONFIG['MODEL_ALIAS']}")
-print(f"Target context: {CONFIG['CTX_SIZE']} tokens on dual-GPU {CONFIG['SPLIT_MODE']} split ({CONFIG['TENSOR_SPLIT']})")
+print(f"Configured model : {CONFIG['MODEL_ALIAS']}")
+print(f"Hugging Face repo: {CONFIG['REPO_ID']}")
+print(f"Target context   : {CONFIG['CTX_SIZE']} tokens on dual-GPU {CONFIG['SPLIT_MODE']} split ({CONFIG['TENSOR_SPLIT']})")
 """)
 
 # Cell 3: Preflight
@@ -100,7 +148,7 @@ import subprocess
 from pathlib import Path
 
 WORK = Path('/kaggle/working')
-SCRATCH = Path('/kaggle/tmp/qwen_server')
+SCRATCH = Path('/kaggle/tmp/freecompute')
 MODELS_DIR = SCRATCH / 'models'
 BUILD_DIR = SCRATCH / 'llama.cpp' / 'build'
 
@@ -187,6 +235,19 @@ if SERVER_BIN is None or not SERVER_BIN.is_file():
     ).stdout.strip()
     print('Building llama.cpp commit:', commit)
 
+    # Auto-detect CUDA compute capability (75 for T4, 80 for A100, 89 for L4)
+    cuda_arch = "75"
+    try:
+        smi_cap = subprocess.check_output(
+            ['nvidia-smi', '--query-gpu=compute_cap', '--format=csv,noheader'],
+            text=True
+        ).splitlines()[0].strip().replace('.', '')
+        if smi_cap:
+            cuda_arch = smi_cap
+    except Exception:
+        pass
+    print(f'Targeting CUDA architecture: sm_{cuda_arch}')
+
     BUILD = SOURCE_DIR / 'build'
     subprocess.run([
         'cmake',
@@ -194,7 +255,7 @@ if SERVER_BIN is None or not SERVER_BIN.is_file():
         '-B', str(BUILD),
         '-DGGML_CUDA=ON',
         '-DGGML_CUDA_NO_VMM=ON',
-        '-DCMAKE_CUDA_ARCHITECTURES=75',
+        f'-DCMAKE_CUDA_ARCHITECTURES={cuda_arch}',
         '-DCMAKE_BUILD_TYPE=Release',
         '-DLLAMA_BUILD_TESTS=OFF',
     ], check=True)
@@ -227,13 +288,16 @@ if MODEL_PATH is None or not Path(MODEL_PATH).is_file():
     ], check=True)
     from huggingface_hub import HfApi, hf_hub_download
 
-    print(f'Downloading {CONFIG["FILENAME"]} from {CONFIG["REPO_ID"]} (revision: {CONFIG["REVISION"]})...')
-    downloaded = hf_hub_download(
-        repo_id=CONFIG['REPO_ID'],
-        filename=CONFIG['FILENAME'],
-        revision=CONFIG['REVISION'],
-        local_dir=str(MODELS_DIR),
-    )
+    print(f'Downloading {CONFIG["FILENAME"]} from {CONFIG["REPO_ID"]}...')
+    download_kwargs = {
+        'repo_id': CONFIG['REPO_ID'],
+        'filename': CONFIG['FILENAME'],
+        'local_dir': str(MODELS_DIR),
+    }
+    if CONFIG.get('REVISION'):
+        download_kwargs['revision'] = CONFIG['REVISION']
+
+    downloaded = hf_hub_download(**download_kwargs)
     MODEL_PATH = Path(downloaded)
     size_gb = MODEL_PATH.stat().st_size / 1e9
     print(f'Downloaded {MODEL_PATH.name}: {size_gb:.2f} GB')
@@ -442,7 +506,7 @@ subprocess.run(['nvidia-smi', '--query-gpu=index,name,memory.used,memory.total',
 
 # Cell 8: Secure Transport
 add_code("""# ==============================================================================
-# 7. SECURE TRANSPORT BRIDGE (CLOUDFLARE OR TAILSCALE)
+# 7. SECURE TRANSPORT BRIDGE (CLOUDFLARE HTTP/2 OR TAILSCALE)
 # ==============================================================================
 import os, re, shutil, subprocess, time
 from pathlib import Path
@@ -483,29 +547,37 @@ if use_tailscale:
     subprocess.run([
         str(TS_CLI), f'--socket={SCRATCH}/tailscaled.sock',
         'up', f'--authkey={CONFIG["TAILSCALE_AUTHKEY"]}',
-        '--hostname=kaggle-qwen-brain',
+        '--hostname=kaggle-freecompute-brain',
         '--accept-routes'
     ], check=True)
     status = subprocess.check_output([
         str(TS_CLI), f'--socket={SCRATCH}/tailscaled.sock', 'ip', '-4'
     ], text=True).strip()
     print('=' * 70)
-    print('  FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE (TAILSCALE)')
+    print('  ⚡ FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE (TAILSCALE)')
     print('=' * 70)
     print(f'  Tailscale IP : http://{status}:{SUPERVISOR_PORT}')
     print(f'  API Key      : {API_KEY}')
     print('=' * 70)
+    print('\\nRun locally in PowerShell:')
+    print(f'freecompute --remote-url "http://{status}:{SUPERVISOR_PORT}" --api-key "{API_KEY}"')
 
 else:
-    print(f'Starting Cloudflare Tunnel to port {SUPERVISOR_PORT}...')
+    # 1. Kill any existing tunnel to prevent conflicts
+    subprocess.run(['pkill', '-9', '-f', 'cloudflared'], check=False)
+    time.sleep(1)
+
+    # 2. Download cloudflared if needed
     cf_bin = SCRATCH / 'cloudflared'
     if not cf_bin.is_file():
+        print('Downloading cloudflared...')
         subprocess.run([
             'curl', '-fsSL', 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64',
             '-o', str(cf_bin)
         ], check=True)
         cf_bin.chmod(0o755)
 
+    # 3. Start cloudflared with --protocol http2 (enforces TCP port 443, preventing UDP disconnects)
     cf_log = WORK / 'cloudflared.log'
     with open(cf_log, 'w') as f:
         cf_proc = subprocess.Popen([
@@ -528,7 +600,7 @@ else:
 
     if tunnel_url:
         print('\\n' + '=' * 70)
-        print('  FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE')
+        print('  ⚡ FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE (HTTP/2)')
         print('=' * 70)
         print(f'  Public URL : {tunnel_url}')
         print(f'  API Key    : {API_KEY}')
@@ -574,7 +646,8 @@ print('VERIFICATION PASSED.')
 add_code("""# ==============================================================================
 # 9. SAFE SHUTDOWN
 # ==============================================================================
-print('Stopping supervisor and llama-server...')
+print('Stopping supervisor, tunnel, and llama-server...')
+subprocess.run(['pkill', '-9', '-f', 'cloudflared'], check=False)
 if 'supervisor_proc' in globals() and supervisor_proc.poll() is None:
     supervisor_proc.terminate()
 if 'llama_proc' in globals() and llama_proc.poll() is None:
