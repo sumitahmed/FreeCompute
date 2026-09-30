@@ -63,8 +63,9 @@ class AgentOrchestrator:
         self.quota.start_session()
         self.cancellation_token = CancellationToken()
 
-        # Add user prompt
-        user_msg = Message(role="user", content=user_prompt)
+        # Add user prompt — append /no_think so Qwen3 doesn't emit thinking-only empty output
+        prompt_content = user_prompt if user_prompt.strip().endswith("/no_think") else f"{user_prompt} /no_think"
+        user_msg = Message(role="user", content=prompt_content)
         history.append(user_msg)
 
         self.journal.record_event(run_id, "task_start", {"prompt": user_prompt})
@@ -207,6 +208,21 @@ class AgentOrchestrator:
 
                 # Case B: Model returned direct text response (Done)
                 else:
+                    if not accumulated_text.strip():
+                        # Qwen3 sometimes emits only reasoning tokens (<think>…</think>)
+                        # and no actual content. Retry before giving up.
+                        if turn_count < self.max_turns:
+                            if on_phase_change:
+                                on_phase_change(
+                                    "retrying",
+                                    "Model returned empty output (thinking-only). Retrying...",
+                                )
+                            history.append(Message(role="user", content="Please respond with your answer."))
+                            continue
+                        raise RuntimeError(
+                            "model output error: model output must contain either output text "
+                            "or tool calls, these cannot both be empty, please try again"
+                        )
                     final_answer = accumulated_text
                     assistant_msg = Message(role="assistant", content=accumulated_text)
                     history.append(assistant_msg)
