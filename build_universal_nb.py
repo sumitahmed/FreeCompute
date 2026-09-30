@@ -509,7 +509,10 @@ else:
     cf_log = WORK / 'cloudflared.log'
     with open(cf_log, 'w') as f:
         cf_proc = subprocess.Popen([
-            str(cf_bin), 'tunnel', '--url', f'http://127.0.0.1:{SUPERVISOR_PORT}'
+            str(cf_bin), 'tunnel',
+            '--protocol', 'http2',
+            '--no-autoupdate',
+            '--url', f'http://127.0.0.1:{SUPERVISOR_PORT}'
         ], stdout=f, stderr=subprocess.STDOUT)
 
     print('Waiting for Cloudflare tunnel URL...')
