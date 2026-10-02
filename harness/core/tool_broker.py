@@ -49,7 +49,13 @@ class DurableToolBroker:
         with self.store.transaction() as db:
             current = db.execute("SELECT * FROM actions WHERE id=?", (action["id"],)).fetchone()
             target = current["target"]
-            post_hash = file_hash(validate_workspace_path(target, str(self.store.workspace), True)) if target else None
+            try:
+                post_hash = file_hash(validate_workspace_path(target, str(self.store.workspace), True)) if target else None
+            except Exception as exc:
+                post_hash = None
+                result = dict(result, file_check_error=scrubber.scrub(exc))
+                if current["state"] == "executing" and self.registry.is_approval_required(action["name"]):
+                    state = "outcome_unknown"
             db.execute("UPDATE actions SET state=?,result=?,post_hash=?,revision=revision+1 WHERE id=?",
                        (state, encode(result), post_hash, action["id"]))
             if state == "completed" and "error" not in result and result.get("status") != "rejected":
@@ -102,7 +108,7 @@ class DurableToolBroker:
                     raise ValueError("Stale model profile/context epoch")
                 arguments = self.registry.validate_arguments(action["name"], arguments)
                 high_risk = self.registry.is_approval_required(action["name"])
-                if high_risk and self.store.one("SELECT id FROM actions WHERE state='outcome_unknown' LIMIT 1"):
+                if high_risk and self.store.one("SELECT id FROM actions WHERE state IN ('executing','outcome_unknown') AND id<>? LIMIT 1", (action_id,)):
                     raise OutcomeUnknown("Uncertain workspace effect blocks fresh action IDs; reconcile it first")
                 target = None
                 if action["name"] in {"write_file", "edit_file"}:
@@ -155,7 +161,7 @@ class DurableToolBroker:
             state = "outcome_unknown" if uncertain else "denied" if result.get("status") == "rejected" else "completed"
             result = self._receipt(action, result, state)
             self.fault("after_result", action)
-            if uncertain:
+            if uncertain or self.store.one("SELECT state FROM actions WHERE id=?", (action_id,))["state"] == "outcome_unknown":
                 raise OutcomeUnknown("Tool may have had effects; result recorded as outcome_unknown")
             return result
 

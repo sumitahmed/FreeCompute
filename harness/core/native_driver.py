@@ -75,6 +75,15 @@ class NativeState:
             raise ValueError("Invalid driver identity or counters")
         if state.phase not in {"ready", "pending", "completed", "failed", "malformed", "incomplete", "truncated", "cancelled", "max_turns"}:
             raise ValueError("Invalid driver phase")
+        if not isinstance(state.pending, list) or bool(state.pending) != (state.phase == "pending"):
+            raise ValueError("Driver phase and pending proposals disagree")
+        seen = set()
+        for proposal in state.pending:
+            if (not isinstance(proposal, dict) or set(proposal) != {"call_id", "name", "arguments"}
+                or not isinstance(proposal["call_id"], str) or not proposal["call_id"] or proposal["call_id"] in seen
+                or not isinstance(proposal["name"], str) or not proposal["name"] or not isinstance(proposal["arguments"], dict)):
+                raise ValueError("Invalid recovered proposal sequence")
+            seen.add(proposal["call_id"])
         return state
 
     def change_profile(self, profile_id):

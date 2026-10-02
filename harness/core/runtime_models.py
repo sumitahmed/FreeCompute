@@ -29,7 +29,7 @@ class ModelProfile:
     def __post_init__(self):
         if not self.profile_id or not self.worker_id or not self.model:
             raise ValueError("Worker/model/profile identity is required")
-        if self.context_capacity <= 0 or not 0 < self.reserved_completion < self.context_capacity or self.max_tool_result_bytes <= 0:
+        if self.context_capacity <= 0 or not 0 < self.reserved_completion < self.context_capacity or self.max_tool_result_bytes < 256:
             raise ValueError("Invalid declared context or completion budget")
 
     def to_dict(self):

@@ -22,9 +22,18 @@ def bounded_result(result, limit):
     encoded = encode(result).encode("utf-8")
     if len(encoded) <= limit:
         return encoded.decode("utf-8")
-    preview = encoded[:max(0, limit - 250)].decode("utf-8", errors="ignore")
-    return encode({"status": "truncated", "original_bytes": len(encoded), "preview": preview,
-                   "notice": "Tool result exceeded this profile's context allowance; full receipt remains in local state"})
+    metadata = {"status": "truncated", "original_bytes": len(encoded), "preview": "",
+                "notice": "Full receipt remains in local state"}
+    low, high = 0, len(encoded)
+    while low < high:
+        middle = (low + high + 1) // 2
+        metadata["preview"] = encoded[:middle].decode("utf-8", errors="ignore")
+        if len(encode(metadata).encode("utf-8")) <= limit:
+            low = middle
+        else:
+            high = middle - 1
+    metadata["preview"] = encoded[:low].decode("utf-8", errors="ignore")
+    return encode(metadata)
 
 
 class CoreService:
@@ -194,6 +203,9 @@ class CoreService:
             if task["profile_id"] != self.profile.profile_id:
                 raise ValueError("Resume requires the recorded model profile; attach matching model/context configuration")
             state = NativeState.recover(task["driver"])
+            if (state.agent_id != task["agent_id"] or state.profile_id != task["profile_id"]
+                or state.context_epoch != task["context_epoch"]):
+                raise ValueError("Checkpoint identity/profile/epoch does not match its durable task")
             history = json.loads(task["history"])
             self.cancellation_token = CancellationToken()
             if self.quota:
@@ -212,7 +224,8 @@ class CoreService:
                 if self.store.one("SELECT id FROM actions WHERE task_id=? AND state='outcome_unknown'", (task_id,)):
                     self._end(task_id, state, history, "outcome_unknown", detail="Reconcile uncertain effects before resuming")
                     break
-                if self.cancellation_token.is_cancelled:
+                if self.cancellation_token.is_cancelled and state.phase != "pending":
+                    state.phase = "cancelled"
                     self._end(task_id, state, history, "cancelled", detail="Local task stopped; remote cancellation is unconfirmed")
                     break
                 if state.phase == "pending":
@@ -221,11 +234,11 @@ class CoreService:
                         action = self.store.one("SELECT * FROM actions WHERE task_id=? AND turn=? AND call_id=?", (task_id, state.turns, proposal["call_id"]))
                         if not action:
                             raise ValueError("Checkpoint is missing its durable action identity; no re-proposal/re-execution is safe")
+                        if fingerprint({"name": proposal["name"], "arguments": proposal["arguments"]}) != action["fingerprint"]:
+                            raise ValueError("Recovered proposal disagrees with its durable action")
                         result = self.tool_broker.execute(action["id"], approval_resolver, self.cancellation_token)
                         results.append((proposal, result))
                         self._narrow_loaded_skill(task_id, action, result)
-                        if self.cancellation_token.is_cancelled:
-                            break
                     if len(results) != len(state.pending):
                         self._end(task_id, state, history, "cancelled", detail="Stopped between sequential tool actions")
                         break
