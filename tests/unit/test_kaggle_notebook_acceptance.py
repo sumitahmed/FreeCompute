@@ -1,14 +1,17 @@
 """Execute notebook control paths with local fakes; never start a GPU or tunnel."""
 import ast
 import contextlib
+import hashlib
 import io
 import json
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 import types
 import unittest
+import urllib.request
 from unittest.mock import Mock, patch
 
 
@@ -32,6 +35,7 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
     def test_wrappers_compile_and_match_canonical_supervisor_and_scrubber(self):
         other = Path('kaggle/universal_dual_gpu_server.ipynb')
         self.assertEqual(self.notebook, json.loads(other.read_text(encoding='utf-8')))
+        self.assertEqual(self.cells[4], Path('kaggle/download_llama_engine.py').read_text(encoding='utf-8'))
         for cell in self.notebook['cells']:
             if cell['cell_type'] == 'code':
                 compile(''.join(cell['source']), 'notebook', 'exec')
@@ -66,24 +70,106 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
             state['print'](self.tailkey)
         self.assertNotIn(self.tailkey, self.output.getvalue())
 
-    def test_build_fetches_and_checks_out_pin_before_cmake(self):
+    def engine_archives(self, unsafe=False):
+        archives = []
+        contents = [
+            {'llama-b11206/llama-server': b'fixture binary',
+             'llama-b11206/libggml-cuda.so': b'fixture backend'},
+            {f'cudart-llama-b11206-bin-ubuntu-cuda-12.8-x64/{name}': b'fixture CUDA library'
+             for name in ('libcudart.so.12', 'libcublas.so.12', 'libcublasLt.so.12')},
+        ]
+        if unsafe:
+            contents[0]['../../outside-engine'] = b'unsafe'
+        for files in contents:
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode='w:gz') as bundle:
+                for name, data in files.items():
+                    info = tarfile.TarInfo(name)
+                    info.size, info.mode = len(data), 0o755
+                    bundle.addfile(info, io.BytesIO(data))
+            archives.append(buffer.getvalue())
+        code = self.cells[4]
+        for production_digest, data in zip((
+                'fa78d7d80b8dca117638c49fc4aa58d6b01407541804483876c27323ebb887de',
+                'bcc52b864ad3edbdd18d10d8061bb84af2c085c50621d0cc19e135130cc360e8'), archives):
+            self.assertIn(production_digest, code)
+            code = code.replace(production_digest, hashlib.sha256(data).hexdigest())
+        return code, archives
+
+    def test_download_verifies_archives_libraries_pin_and_both_gpus(self):
         state = self.configuration()
+        code, archives = self.engine_archives()
         with tempfile.TemporaryDirectory() as directory:
-            scratch = Path(directory)
-            binary = scratch / 'llama.cpp/build/bin/llama-server'
-            binary.parent.mkdir(parents=True)
-            binary.touch()
-            state.update(SCRATCH=scratch, SERVER_BIN=None, subprocess=subprocess)
-            commit = state['CONFIG']['LLAMA_COMMIT']
-            with patch.object(subprocess, 'run', return_value=types.SimpleNamespace(stdout=commit)) as run, \
-                 patch.object(subprocess, 'check_output', return_value='7.5\n'), \
+            state.update(SCRATCH=Path(directory), SERVER_BIN=None)
+            responses = [types.SimpleNamespace(returncode=0, stdout=text, stderr='') for text in (
+                'version: 11206 (2b129ccfa)', 'CUDA0: Tesla T4\nCUDA1: Tesla T4')]
+            with patch.object(urllib.request, 'urlopen', side_effect=[io.BytesIO(a) for a in archives]) as download, \
+                 patch.object(subprocess, 'run', side_effect=responses * 2) as run, \
+                 patch.dict('os.environ'), \
                  contextlib.redirect_stdout(self.output):
-                exec(self.cells[4], state)
-            commands = [call.args[0] for call in run.call_args_list]
-            self.assertEqual(commands[0][-5:], ['fetch', '--depth', '1', 'origin', commit])
-            self.assertEqual(commands[1][-3:], ['checkout', '--detach', commit])
-            self.assertEqual(commands[2][-2:], ['rev-parse', 'HEAD'])
-            self.assertEqual(commands[3][0], 'cmake')
+                exec(code, state)
+                exec(code, state)  # Verified cache avoids repeat downloads.
+            self.assertEqual(download.call_count, 2)
+            for call in download.call_args_list:
+                self.assertIn('/releases/download/b11206/', call.args[0].full_url)
+                self.assertIn('cuda-12.8-x64.tar.gz', call.args[0].full_url)
+            self.assertEqual([c.args[0][-1] for c in run.call_args_list],
+                             ['--version', '--list-devices'] * 2)
+            self.assertTrue((state['SERVER_BIN'].parent / 'libcublas.so.12').is_file())
+            self.assertEqual(state['ENGINE_PROVENANCE']['commit'], state['CONFIG']['LLAMA_COMMIT'])
+
+    def test_download_rejects_corrupt_archive_before_extraction_or_execution(self):
+        state = self.configuration()
+        code, archives = self.engine_archives()
+        with tempfile.TemporaryDirectory() as directory:
+            state['SCRATCH'] = Path(directory)
+            with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(b'corrupt')), \
+                 patch.object(subprocess, 'run') as run, contextlib.redirect_stdout(self.output):
+                with self.assertRaisesRegex(RuntimeError, 'SHA256 mismatch'):
+                    exec(code, state)
+            run.assert_not_called()
+            self.assertFalse((state['ENGINE_DIR'] / 'llama-b11206').exists())
+
+    def test_download_rejects_tar_path_traversal(self):
+        state = self.configuration()
+        code, archives = self.engine_archives(unsafe=True)
+        with tempfile.TemporaryDirectory() as directory:
+            state['SCRATCH'] = Path(directory)
+            with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(archives[0])), \
+                 patch.object(subprocess, 'run') as run, contextlib.redirect_stdout(self.output):
+                with self.assertRaises(tarfile.FilterError):
+                    exec(code, state)
+            run.assert_not_called()
+            self.assertFalse((Path(directory).parent / 'outside-engine').exists())
+            self.assertFalse((state['ENGINE_DIR'] / 'llama-b11206').exists())
+
+    def test_download_rejects_wrong_version_cpu_fallback_and_runtime_failure(self):
+        code, archives = self.engine_archives()
+        cases = [
+            ([('version: 11207 (abcdef0)', 0)], 'pinned commit'),
+            ([('version: 11206 (2b129ccfa)', 0), ('CPU: fixture', 0)], 'both T4'),
+            ([('missing library ' + self.bearer, 1)], 'incompatible'),
+        ]
+        for outputs, error_text in cases:
+            with self.subTest(error=error_text), tempfile.TemporaryDirectory() as directory:
+                state = self.configuration()
+                state['SCRATCH'] = Path(directory)
+                results = [types.SimpleNamespace(stdout=text, stderr='', returncode=rc) for text, rc in outputs]
+                with patch.object(urllib.request, 'urlopen', side_effect=[io.BytesIO(a) for a in archives]), \
+                     patch.object(subprocess, 'run', side_effect=results), patch.dict('os.environ'), \
+                     contextlib.redirect_stdout(self.output):
+                    with self.assertRaisesRegex(RuntimeError, error_text) as error:
+                        exec(code, state)
+                self.assertNotIn(self.bearer, str(error.exception))
+
+    def test_download_rejects_changed_pin_or_running_worker(self):
+        state = self.configuration()
+        state['CONFIG']['LLAMA_COMMIT'] = 'different'
+        with self.assertRaisesRegex(RuntimeError, 'configured engine pin'):
+            exec(self.cells[4], state)
+        state['llama_proc'] = types.SimpleNamespace(poll=lambda: None)
+        with self.assertRaisesRegex(RuntimeError, 'already running'):
+            exec(self.cells[4], state)
 
     def test_transport_forwards_tcp_and_removes_key_file_without_exposing_it(self):
         state = self.configuration('tailscale')
@@ -167,7 +253,8 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
             model_path = Path(directory) / 'model.gguf'
             model_path.touch()
             state.update(requests=requests, subprocess=subprocess, SERVER_BIN=Path('fixture-server'),
-                         MODEL_PATH=model_path, llama_cmd=['fixture-server', '--parallel', '1'])
+                         MODEL_PATH=model_path, llama_cmd=['fixture-server', '--parallel', '1'],
+                         ENGINE_PROVENANCE={'distribution': 'fixture'})
             with patch.object(subprocess, 'check_output', return_value='fixture-version'), \
                  contextlib.redirect_stdout(self.output):
                 exec(self.cells[8], state)
