@@ -1,6 +1,6 @@
 # V1 real Kaggle acceptance
 
-2026-10-02. Preparation on `v2/safety-and-agentdriver-spike`, preserving backend
+2026-10-03. Preparation on `v2/safety-and-agentdriver-spike`, preserving backend
 checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. **No GPU session, tunnel,
 remote health request or real inference has been started in this preparation.**
 
@@ -25,6 +25,7 @@ attachments. No remote component executes local tools.
 | Worker / profile | `kaggle-qwen` / `kaggle-qwen-historical-64k` |
 | Location / engine | Kaggle Free dual T4 / llama.cpp |
 | Engine commit | `2b129ccfa03aea330d2d9ac4650a10de393dbe3a` |
+| Engine distribution | Official release `b11206`, Linux x64 CUDA 12.8; SHA256-pinned engine and CUDA runtime archives |
 | Model repository | `huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF` |
 | Model filename | `Huihui-Qwen3.8-27B-abliterated-UD-DW-Q4_K_M.gguf` |
 | Model revision | `3f101cd22b7999228bbd5d79a33975414eb9758b` |
@@ -49,9 +50,19 @@ failure; do not silently change context, weights, template or flags.
 - Both wrappers advertised Run All despite a final cell that stopped inference.
   Instructions now require code cells 1-8 individually; shutdown requires an explicit
   `CONFIRM_SHUTDOWN = True`. Startup/configuration/transport refuse active reruns.
-- The cold build's heading claimed a pinned engine but cloned current HEAD.
-  Fetch and detach at the historical pin, verify HEAD before CMake. Default
-  acceptance ignores arbitrary dataset binaries/weights; no inputs are needed.
+- The original cold build's heading claimed a pinned engine but cloned current
+  HEAD. The initial fix pinned that checkout. At the user's request, code cell 4
+  now downloads official release `b11206`, which targets the same full commit,
+  instead of compiling. Both engine and CUDA runtime archives are SHA256 checked;
+  extraction rejects unsafe paths, and version/both-T4 probes fail before model
+  loading on a mismatch or incompatible Linux/CUDA runtime. No CPU fallback or
+  alternate engine version is selected. Default acceptance ignores arbitrary
+  dataset binaries/weights; no inputs are needed.
+- The official Ubuntu CUDA 12.8 release uses upstream release build flags, which
+  do **not** enable the historical `GGML_CUDA_NO_VMM=ON`. This is a declared build
+  provenance change, not proof of identical allocation or inference behavior.
+  Model identity, context and server arguments remain unchanged. Cell 8 records
+  the release identity, archive checksums, build distinction and CUDA observations.
 - The user requested a Cloudflare URL as an alternative and does not want to use
   Tailscale for this run. The notebook now defaults to a Cloudflare Quick Tunnel;
   it requires only `FREECOMPUTE_API_KEY` in Kaggle Secrets. HTTP/2 does not
@@ -92,6 +103,13 @@ For the requested Cloudflare URL route, before allocating GPU time:
 4. Run code cells **1, 2, 3, 4, 5, 6, 7, 8**, individually, in order.
    Use the code-cell heading numbers; the introductory Markdown is not counted.
    Code cell 1 is MODEL SELECTION & RUNTIME CONFIGURATION. Stop on an error; report the redacted error.
+   Cell 4 downloads about 765 MB, retaining the release's shared libraries and
+   adding its matching CUDA runtime libraries; no compiler is needed. It must
+   print `ENGINE DOWNLOAD VERIFIED; BOTH T4 GPUs DETECTED.` before continuing.
+   For an already-uploaded notebook whose cells 1-3 finished successfully, paste
+   the entire contents of `kaggle/download_llama_engine.py` into code cell 4.
+   Run that replacement cell, then continue with cells 5-8. Do not replace the
+   engine while the worker is running. Updated uploads include this cell already.
 5. Code cell 6 must print `SUPERVISOR HEALTHY ON PORT 8081`; code cell 7 prints
    `CLOUDFLARE QUICK TUNNEL ONLINE` and the temporary `Remote URL`.
    Code cell 8 must print the manifest and `WORKER READY FOR LOCAL ACCEPTANCE`.
