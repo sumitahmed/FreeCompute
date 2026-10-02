@@ -243,12 +243,12 @@ class RuntimeStore:
             allocation = db.execute("SELECT value FROM metadata WHERE key='allocation'").fetchone()
             if allocation and json.loads(allocation[0])["state"] == "active":
                 db.execute("UPDATE metadata SET value=? WHERE key='allocation'", (encode({"state": "quarantined", "reason": "core restarted during inference"}),))
-            tasks = db.execute("SELECT * FROM tasks WHERE state IN ('created','running','waiting_approval','paused','outcome_unknown','cancel_requested')").fetchall()
+            tasks = db.execute("SELECT * FROM tasks WHERE state IN ('created','queued','running','waiting_approval','paused','outcome_unknown','cancel_requested')").fetchall()
             for task in tasks:
                 db.execute("UPDATE actions SET state='outcome_unknown',revision=revision+1 WHERE task_id=? AND state='executing'", (task["id"],))
                 db.execute("UPDATE actions SET state='proposed',revision=revision+1 WHERE task_id=? AND state IN ('approved','awaiting_approval')", (task["id"],))
                 uncertain = db.execute("SELECT 1 FROM actions WHERE task_id=? AND state='outcome_unknown'", (task["id"],)).fetchone()
-                state = "outcome_unknown" if uncertain else "paused"
+                state = "outcome_unknown" if uncertain else "queued" if task["state"] == "queued" else "paused"
                 updated = self.update_task(db, task["id"], state=state)
                 emitted.append(self.event(db, task["session_id"], task["id"], "task.recovered", {"state": state}, revision=updated["revision"]))
                 self.checkpoint(db, task["id"])

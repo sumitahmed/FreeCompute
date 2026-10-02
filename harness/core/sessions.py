@@ -17,13 +17,15 @@ class SessionManager:
         return self.store.all("SELECT id,status,profile_id,context_epoch,revision,current_task_id,created_at,updated_at FROM sessions ORDER BY updated_at DESC")
 
     def submit(self, prompt, profile, system, schemas, allowed_tools, *, session_id=None, request_id=None,
-               max_turns=15, selected_context=None, operation="task"):
+               max_turns=15, selected_context=None, operation="task", requested_worker=None):
         if not isinstance(prompt, str) or not prompt.strip() or not isinstance(max_turns, int) or isinstance(max_turns, bool) or not 0 < max_turns <= 100:
             raise ValueError("A nonempty prompt and a turn budget of 1..100 are required")
         request_id = request_id or identity()
         exact = {"prompt": prompt, "profile_id": profile.profile_id, "session_id": session_id,
                  "allowed_tools": sorted(allowed_tools), "max_turns": max_turns,
                  "selected_context": selected_context, "operation": operation}
+        if requested_worker is not None:
+            exact["requested_worker"] = requested_worker
         digest = fingerprint(exact)
         emitted = []
         with self.store.transaction() as db:

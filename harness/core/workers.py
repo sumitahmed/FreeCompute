@@ -13,6 +13,8 @@ class WorkerRegistry:
             raise ValueError("Worker health TTL must be positive")
         self.store, self.health_ttl, self.clock = store, health_ttl, clock
         self.engines, self.trusted_embeddings = {}, set()
+        with store.transaction() as db:
+            db.execute("UPDATE workers SET health='unverified',checked_at=NULL")
 
     def add_profile(self, profile):
         value = profile.to_dict()
@@ -55,12 +57,22 @@ class WorkerRegistry:
                 raise ValueError("Resolve worker leases before changing identity, capacity, resources or models")
             db.execute("INSERT INTO workers VALUES(?,1,?,'unverified',NULL,NULL,'{}') ON CONFLICT(id) DO UPDATE SET declaration=excluded.declaration",
                        (worker.worker_id, encode(declaration)))
+            if old and old[0] != encode(declaration):
+                db.execute("UPDATE workers SET health='unverified',checked_at=NULL,observation='{}' WHERE id=?", (worker.worker_id,))
             db.execute("DELETE FROM worker_profiles WHERE worker_id=?", (worker.worker_id,))
             db.executemany("INSERT INTO worker_profiles VALUES(?,?)", [(worker.worker_id, p.profile_id) for p in profiles])
         self.engines[worker.worker_id] = engine
         if trusted_embedding:
             self.trusted_embeddings.add(worker.worker_id)
             self.observe(worker.worker_id, "healthy", {"source": "trusted in-process declaration"})
+
+    def worker(self, worker_id):
+        row = self.store.one("SELECT declaration FROM workers WHERE id=?", (worker_id,))
+        if not row:
+            raise ValueError("Unknown worker")
+        value = json.loads(row["declaration"])
+        value.pop("adapter_identity", None)
+        return Worker(**value)
 
     def engine(self, worker_id):
         try:

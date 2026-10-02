@@ -26,7 +26,11 @@ class LlamaCppEngine:
                 "timeout_seconds": self._client.timeout_seconds}
 
     def get_health(self):
-        return self._client.get_health()
+        health = self._client.get_health()
+        if health.status == "ok":
+            from dataclasses import replace
+            health = replace(health, status="healthy")
+        return health
 
     def stream(self, profile, messages, tools, cancellation):
         if not profile.capabilities <= self.get_capabilities():

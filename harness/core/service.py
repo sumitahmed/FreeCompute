@@ -6,10 +6,13 @@ from urllib.parse import urlsplit
 from harness.core.client import CancellationToken
 from harness.core.context import budget_context
 from harness.core.inference import AllocationUnavailable, InferenceBroker
+from harness.core.engines import ComfyUIEngine
 from harness.core.native_driver import InferenceResponse, NativeAgentDriver, NativeState
 from harness.core.permissions import PermissionService
 from harness.core.prompt import PromptBuilder
-from harness.core.runtime_models import LlamaCppEngine, ModelProfile, Worker
+from harness.core.runtime_models import ModelProfile, Worker
+from harness.core.scheduler import QueueWaiting, Scheduler
+from harness.core.workers import WorkerRegistry
 from harness.core.sessions import SessionManager, TERMINAL
 from harness.core.tool_broker import DurableToolBroker, OutcomeUnknown
 from harness.security import scrubber
@@ -39,15 +42,17 @@ def bounded_result(result, limit):
 
 class CoreService:
     def __init__(self, workspace, engine, profile, *, state_dir=None, skill_manager=None,
-                 driver=None, system_prompt=None, fault_hook=None, worker=None):
+                 driver=None, system_prompt=None, fault_hook=None, worker=None, attachments=None, selected_worker=None):
         self.store = RuntimeStore(workspace, state_dir)
         try:
             self.profile = profile
-            self.worker = worker or Worker(profile.worker_id, "fixture", profile.engine, profile.capabilities)
-            if profile.worker_id != self.worker.worker_id or profile.engine != self.worker.engine or not profile.capabilities <= self.worker.capabilities:
+            self.worker = worker or Worker(profile.worker_id or "attached-text", "fixture", profile.engine, profile.capabilities,
+                                          resource_pool="attached-default", resources=frozenset({"inference"}))
+            if self.worker.engine not in profile.engine_requirements or not profile.capabilities <= self.worker.capabilities:
                 raise ValueError("Profile is incompatible with the attached worker")
             self._listeners = []
             self._run_lock = threading.Lock()
+            self._running_task_id = None
             self.cancellation_token = CancellationToken()
             self.driver = driver or NativeAgentDriver()
             self.skills = skill_manager or SkillManager(str(self.store.workspace))
@@ -59,13 +64,20 @@ class CoreService:
                 self.artifacts.restore, requires_approval=True))
             self.permissions = PermissionService(self.store, self._publish)
             self.tool_broker = DurableToolBroker(self.store, self.tools, self.permissions, self.artifacts, self._publish, fault_hook)
-            self.inference = InferenceBroker(self.store, engine, self._publish)
+            self.registry = WorkerRegistry(self.store)
+            for attached_worker, profiles, adapter in attachments or [(self.worker, [profile], engine)]:
+                self.registry.attach(attached_worker, profiles, adapter, trusted_embedding=attachments is None and worker is None)
+            self.selected_worker = selected_worker if attachments is not None else self.worker.worker_id
+            self.scheduler = Scheduler(self.store, self.registry, self._publish)
+            self.inference = InferenceBroker(self.store, self.registry, self.scheduler, self._publish, self.worker.worker_id)
             self.sessions = SessionManager(self.store, self._publish)
             self.current_session_id = None
             self.quota = self.session_tracker = self.image_provider = None
+            self.image_profile_id = None
             self.legacy_undo = None
             for event in self.store.recover():
                 self._publish(event)
+            self.scheduler.recover()
             with self.store.transaction() as db:
                 db.execute("INSERT OR REPLACE INTO metadata VALUES('active_profile',?)", (encode(profile.to_dict()),))
                 db.execute("INSERT OR REPLACE INTO metadata VALUES('worker',?)", (encode({
@@ -80,23 +92,21 @@ class CoreService:
     def from_config(cls, config):
         # Composition authority lives here, never in the proposal driver or CLI.
         from pathlib import Path
-        from harness.providers.comfyui import ComfyUIProvider
-        from harness.providers.llamacpp import LlamaCppProvider
+        from harness.core.engine_config import configured_engines
         from harness.telemetry.quota_ledger import QuotaLedger
         from harness.telemetry.session_tracker import SessionTracker
         from harness.storage.undo import UndoManager
         scrubber.register_secret(config.api_key)
         scrubber.register_secret(config.remote_url)
         scrubber.register_secret(config.image_server_url)
-        provider = LlamaCppProvider(config.remote_url, config.api_key, config.model_alias, config.request_timeout_seconds)
-        capabilities = frozenset(capability.value for capability in provider.get_capabilities())
-        profile_id = fingerprint({"model": config.model_alias, "engine": "llama.cpp", "context": config.max_context_tokens})
-        worker = Worker("supervisor-text", "remote-supervisor", "llama.cpp", capabilities)
-        profile = ModelProfile(profile_id, worker.worker_id, config.model_alias, worker.engine, capabilities,
-                               config.max_context_tokens, min(2048, max(1, config.max_context_tokens // 4)))
-        service = cls(config.workspace_root, LlamaCppEngine(provider.client), profile, worker=worker)
+        profile, (worker, _, engine), attachments = configured_engines(config, config.workspace_root)
+        service = cls(config.workspace_root, engine, profile, worker=worker, attachments=attachments,
+                      selected_worker=config.selected_worker or None)
         try:
-            service.image_provider = ComfyUIProvider(server_url=config.image_server_url, workspace_root=str(service.store.workspace))
+            for _, profiles, adapter in attachments:
+                if isinstance(adapter, ComfyUIEngine):
+                    service.image_provider, service.image_profile_id = adapter.provider, profiles[0].profile_id
+                    break
             service.session_tracker = SessionTracker()
             # Preserve the existing quota ledger location; it is not task authority.
             service.quota = QuotaLedger(storage_path=str(Path(config.journal_dir) / "quota_ledger.json"))
@@ -131,22 +141,33 @@ class CoreService:
             event = self.store.event(db, task["session_id"], task["id"], kind, payload, revision=task["revision"])
         self._publish(event)
 
-    def submit(self, prompt, *, session_id=None, request_id=None, skill=None, allowed_tools=None, max_turns=15, selected_context=None):
+    def submit(self, prompt, *, session_id=None, request_id=None, skill=None, allowed_tools=None, max_turns=15, selected_context=None,
+               profile_id=None, worker_id=None):
+        profile = self.registry.profile(profile_id or self.profile.profile_id)
+        if "text" not in profile.capabilities:
+            raise ValueError("Select a text model for coding/chat tasks; use image generation for an image profile")
         available = frozenset(self.tools.tools)
-        allowed = available if allowed_tools is None else frozenset(allowed_tools)
+        allowed = (available if "code_tools" in profile.capabilities else frozenset()) if allowed_tools is None else frozenset(allowed_tools)
         if not allowed <= available:
             raise ValueError("Task requested unknown tools; inspect the core tool catalog")
+        if allowed and "code_tools" not in profile.capabilities:
+            raise ValueError("Selected model does not declare code_tools support")
         if skill:
             manifest = self.skills.get_skill(skill) if isinstance(skill, str) else skill
             if not manifest:
                 raise ValueError("Unknown skill; use /skills to inspect available commands")
-            allowed &= self.skills.restrictions(manifest, available, self.profile.capabilities)
+            allowed &= self.skills.restrictions(manifest, available, profile.capabilities)
             prompt = self.skills.build_skill_prompt(manifest, prompt)
         schemas = [self.tools.tools[name].to_openai_tool() for name in sorted(allowed)]
-        task_id = self.sessions.submit(prompt, self.profile, self.prompt_builder.build_system_content(), schemas,
+        route = worker_id if worker_id is not None else self.selected_worker if profile.profile_id == self.profile.profile_id else None
+        if not self.registry.candidates(profile.profile_id, route):
+            raise ValueError("Selected worker cannot serve this model profile")
+        task_id = self.sessions.submit(prompt, profile, self.prompt_builder.build_system_content(), schemas,
                                       allowed, session_id=session_id, request_id=request_id,
-                                      max_turns=max_turns, selected_context=selected_context)
+                                      max_turns=max_turns, selected_context=selected_context, requested_worker=route)
         self.current_session_id = self.task(task_id)["session_id"]
+        if self.task(task_id)["state"] not in TERMINAL:
+            self.scheduler.enqueue(self.task(task_id), profile, {"text", "code_tools"} if schemas else {"text"}, requested_worker=route)
         return task_id
 
     def task(self, task_id):
@@ -171,6 +192,7 @@ class CoreService:
         state.local_stop_confirmed = state.cancellation_requested
         with self.store.transaction() as db:
             task = self.store.update_task(db, task_id, state=status, driver=state.serialize(), history=history, final_answer=scrubber.scrub(answer))
+            self.scheduler.finalize_task(db, task_id, status)
             db.execute("UPDATE sessions SET history=? WHERE id=?", (encode(history), task["session_id"]))
             if attempt_id:
                 db.execute("UPDATE inference_attempts SET state='consumed' WHERE id=?", (attempt_id,))
@@ -188,7 +210,7 @@ class CoreService:
             return
         task = self.task(task_id)
         allowed = set(json.loads(task["allowed_tools"]))
-        restricted = allowed & self.skills.restrictions(manifest, self.tools.tools, self.profile.capabilities)
+        restricted = allowed & self.skills.restrictions(manifest, self.tools.tools, self.registry.profile(task["profile_id"]).capabilities)
         with self.store.transaction() as db:
             db.execute("UPDATE tasks SET allowed_tools=?,revision=revision+1 WHERE id=?", (encode(sorted(restricted)), task_id))
             db.execute("UPDATE agents SET capabilities=? WHERE id=?", (encode(sorted(restricted)), task["agent_id"]))
@@ -200,13 +222,13 @@ class CoreService:
         if not self._run_lock.acquire(blocking=False):
             raise RuntimeError("This local core already has an active task")
         usage = ttft_ms = None
+        self._running_task_id = task_id
         try:
             task = self.task(task_id)
             self.current_session_id = task["session_id"]
             if task["state"] in TERMINAL:
                 return self._summary(task_id)
-            if task["profile_id"] != self.profile.profile_id:
-                raise ValueError("Resume requires the recorded model profile; attach matching model/context configuration")
+            profile = self.registry.profile(task["profile_id"])
             state = NativeState.recover(task["driver"])
             if (state.agent_id != task["agent_id"] or state.profile_id != task["profile_id"]
                 or state.context_epoch != task["context_epoch"]):
@@ -219,7 +241,10 @@ class CoreService:
             if state.requires_reproposal:
                 self._end(task_id, state, history, "failed", detail="Checkpoint was redacted; pending actions require a fresh proposal")
                 return self._summary(task_id)
-            state.cancellation_requested = state.local_stop_confirmed = False
+            if state.cancellation_requested:
+                self.cancellation_token.cancel()
+            else:
+                state.local_stop_confirmed = False
             with self.store.transaction() as db:
                 task = self.store.update_task(db, task_id, state="running", driver=state.serialize())
                 started = self.store.event(db, task["session_id"], task_id, "task.started", {"profile_id": task["profile_id"]}, revision=task["revision"])
@@ -249,7 +274,7 @@ class CoreService:
                         self._end(task_id, state, history, "cancelled", detail="Stopped between sequential tool actions")
                         break
                     history += [{"role": "tool", "tool_call_id": p["call_id"], "name": p["name"],
-                                 "content": bounded_result(r, self.profile.max_tool_result_bytes)} for p, r in results]
+                                 "content": bounded_result(r, profile.max_tool_result_bytes)} for p, r in results]
                     self.driver.accept_results(state, [p["call_id"] for p, _ in results])
                     with self.store.transaction() as db:
                         task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -284,7 +309,7 @@ class CoreService:
                 schemas = json.loads(session["tool_prefix"])
                 selected = json.loads(task["selected_context"])
                 selected_messages = [{"role": "user", "content": "[SELECTED CONTEXT]\n" + encode(selected)}] if selected else []
-                budget = budget_context(self.profile, session["system_prefix"], schemas, history, selected_messages)
+                budget = budget_context(profile, session["system_prefix"], schemas, history, selected_messages)
                 self._event(task, "context.budget", budget.to_dict())
                 if not budget.fits:
                     state.phase = "failed"
@@ -298,7 +323,7 @@ class CoreService:
                     self._event(task, "model.replayed", {"attempt_id": attempt_id})
                 else:
                     messages = [{"role": "system", "content": session["system_prefix"]}] + selected_messages + history
-                    reply, attempt_id, usage, ttft_ms = self.inference.infer(task, self.profile, messages, schemas, self.cancellation_token)
+                    reply, attempt_id, usage, ttft_ms = self.inference.infer(task, profile, messages, schemas, self.cancellation_token)
                 state.cancellation_requested = self.cancellation_token.is_cancelled
                 decision = self.driver.advance(state, reply, task["max_turns"])
                 if decision.kind == "tool_proposals":
@@ -323,6 +348,8 @@ class CoreService:
                 else:
                     self._end(task_id, state, history, decision.kind, detail=decision.detail, attempt_id=attempt_id)
                     break
+        except QueueWaiting as exc:
+            self._end(task_id, state, history, "queued", detail=scrubber.scrub(exc))
         except AllocationUnavailable as exc:
             self._end(task_id, state, history, "paused", detail=scrubber.scrub(exc))
         except OutcomeUnknown as exc:
@@ -346,6 +373,7 @@ class CoreService:
         finally:
             if self.quota:
                 self.quota.stop_session()
+            self._running_task_id = None
             self._run_lock.release()
         return self._summary(task_id, usage, ttft_ms)
 
@@ -361,8 +389,60 @@ class CoreService:
             raise ValueError("Interrupted image job has no confirmed task receipt; inspect the provider job and reconcile inference capacity before a new request")
         return self.run(session["current_task_id"], approval_resolver=approval_resolver)
 
-    def cancel(self):
-        self.cancellation_token.cancel()
+    def cancel(self, task_id=None):
+        if task_id is None:
+            task_id = self._running_task_id
+            if task_id is None and self.current_session_id:
+                session = self.store.one("SELECT current_task_id FROM sessions WHERE id=?", (self.current_session_id,))
+                task_id = session["current_task_id"] if session else None
+        if task_id is None:
+            self.cancellation_token.cancel()
+            return
+        if task_id == self._running_task_id:
+            self.cancellation_token.cancel()
+            with self.store.transaction() as db:
+                task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+                state = NativeState.recover(task["driver"])
+                state.cancellation_requested = True
+                updated = self.store.update_task(db, task_id, state="cancel_requested", driver=state.serialize())
+                event = self.store.event(db, task["session_id"], task_id, "task.cancel_requested", {"status": "cancel_requested", "remote_cancel_confirmed": False}, revision=updated["revision"])
+                self.store.checkpoint(db, task_id)
+            self._publish(event)
+            return
+        if not self.scheduler.cancel_queued(task_id):
+            raise ValueError("Remote inference outcome is unknown; reconcile its lease before cancelling queued work")
+
+    def attach_worker(self, worker, profiles, engine):
+        self.registry.attach(worker, profiles, engine)
+
+    def list_workers(self, refresh=False):
+        if refresh:
+            for worker_id in tuple(self.registry.engines):
+                self.registry.refresh(worker_id)
+        return self.registry.list_workers()
+
+    def list_models(self):
+        return self.registry.list_profiles()
+
+    def list_queue(self):
+        return self.scheduler.list_queue()
+
+    def run_next(self, *, approval_resolver=None):
+        task_id = self.scheduler.next_task()
+        if not task_id:
+            return {"status": "waiting", "final_answer": "", "detail": "No queued task currently has an eligible free worker"}
+        command = self.store.one("SELECT operation FROM commands WHERE task_id=?", (task_id,))
+        if command["operation"] == "image":
+            if not self._run_lock.acquire(blocking=False):
+                raise RuntimeError("This local core already has an active task")
+            try:
+                self.cancellation_token = CancellationToken()
+                self._execute_image_task(task_id)
+                return self._summary(task_id)
+            finally:
+                self._running_task_id = None
+                self._run_lock.release()
+        return self.run(task_id, approval_resolver=approval_resolver)
 
     def list_sessions(self):
         return self.sessions.list_sessions()
@@ -393,9 +473,20 @@ class CoreService:
             raise ValueError("Image provider is not configured in this core composition")
         scrubber.register_secret(value)
         self.image_provider.server_url = value.rstrip("/")
+        if self.image_profile_id:
+            for row in self.registry.candidates(self.image_profile_id):
+                adapter = self.registry.engine(row["id"])
+                if isinstance(adapter, ComfyUIEngine) and adapter.provider is self.image_provider:
+                    profiles = [self.registry.profile(p["profile_id"]) for p in self.store.all("SELECT profile_id FROM worker_profiles WHERE worker_id=?", (row["id"],))]
+                    self.registry.attach(self.registry.worker(row["id"]), profiles, ComfyUIEngine(self.image_provider))
 
     def get_health(self):
-        health = self.inference.engine.get_health()
+        worker_id = self.selected_worker or next((r["id"] for r in self.registry.candidates(self.profile.profile_id)), self.worker.worker_id)
+        health = self.registry.refresh(worker_id)
+        if health is None:
+            from harness.core.models import RemoteHealth
+            observation = next(w for w in self.list_workers() if w["worker_id"] == worker_id)
+            health = RemoteHealth(observation["health"], raw=observation["observed_resources"])
         if self.session_tracker:
             self.session_tracker.update_from_remote_health(health.raw)
         with self.store.transaction() as db:
@@ -404,19 +495,35 @@ class CoreService:
         return health
 
     def model_info(self):
-        return dict(self.profile.to_dict(), allocation=self.inference.allocation(), worker_location=self.worker.location)
+        return dict(self.profile.to_dict(), selected_worker=self.selected_worker, allocation=self.inference.allocation(),
+                    eligible_workers=[w for w in self.list_workers() if self.profile.profile_id in w["profiles"]])
 
     def select_profile(self, profile):
+        if isinstance(profile, str):
+            profile = self.registry.profile(profile)
         if self._run_lock.locked() or self.inference.allocation()["state"] != "idle":
             raise ValueError("Cannot change profiles while inference is active or uncertain")
         unfinished = self.store.one("SELECT id FROM tasks WHERE state NOT IN ('completed','failed','malformed','truncated','incomplete','max_turns','context_overflow','cancelled') LIMIT 1")
         if unfinished:
             raise ValueError("Resume/resolve the pending task before changing its model profile")
-        if profile.worker_id != self.worker.worker_id or profile.engine != self.worker.engine or not profile.capabilities <= self.worker.capabilities:
-            raise ValueError("Profile is incompatible with the attached worker")
+        registered = self.store.one("SELECT id FROM model_profiles WHERE id=?", (profile.profile_id,))
+        if not registered:
+            worker = self.worker
+            bound_profiles = [self.registry.profile(p["profile_id"]) for p in self.store.all("SELECT profile_id FROM worker_profiles WHERE worker_id=?", (worker.worker_id,))]
+            self.registry.attach(worker, bound_profiles + [profile], self.registry.engine(worker.worker_id), trusted_embedding=worker.worker_id in self.registry.trusted_embeddings)
+        elif self.registry.profile(profile.profile_id).to_dict() != profile.to_dict():
+            raise ValueError("Profile IDs are immutable; use a new ID for changed declarations")
         self.profile = profile
+        self.selected_worker = profile.worker_id or None
         with self.store.transaction() as db:
             db.execute("INSERT OR REPLACE INTO metadata VALUES('active_profile',?)", (encode(profile.to_dict()),))
+
+    def select_model(self, profile_id, worker_id=None):
+        profile = self.registry.profile(profile_id)
+        if not self.registry.candidates(profile_id, worker_id):
+            raise ValueError("Selected worker cannot serve this model profile")
+        self.select_profile(profile)
+        self.selected_worker = worker_id
 
     def get_last_diff(self):
         snapshot = self.artifacts.latest()
@@ -475,17 +582,36 @@ class CoreService:
             self.cancellation_token = CancellationToken()
             return self._generate_image(prompt)
         finally:
+            self._running_task_id = None
             self._run_lock.release()
 
     def _generate_image(self, prompt):
-        profile = ModelProfile("comfy-image", "comfy-worker", "ComfyUI-default", "ComfyUI", frozenset({"image_gen"}))
+        if self.image_profile_id is None:
+            profile = ModelProfile("comfy-image", "comfy-worker", "ComfyUI-default", "ComfyUI", frozenset({"image_gen"}))
+            worker = Worker("comfy-worker", "fixture", "ComfyUI", profile.capabilities,
+                            resource_pool=self.worker.resource_pool or self.worker.worker_id, resources=self.worker.resources)
+            self.registry.attach(worker, [profile], ComfyUIEngine(self.image_provider), trusted_embedding=self.worker.location == "fixture")
+            self.image_profile_id = profile.profile_id
+        profile = self.registry.profile(self.image_profile_id)
         task_id = self.sessions.submit(prompt, profile, "Image generation", [], [], operation="image")
+        self.scheduler.enqueue(self.task(task_id), profile, {"image_gen"})
+        return self._execute_image_task(task_id)
+
+    def _execute_image_task(self, task_id):
         task = self.task(task_id)
+        self._running_task_id = task_id
+        profile = self.registry.profile(task["profile_id"])
         state = NativeState.recover(task["driver"])
         try:
-            result = self.inference.image(task, profile, self.image_provider.generate_image, scrubber.scrub(prompt))
+            result = self.inference.image(task, profile, scrubber.scrub(task["prompt"]), self.cancellation_token)
             self._end(task_id, state, json.loads(task["history"]), "completed", answer=result.get("file_path", ""))
             return result
+        except QueueWaiting as exc:
+            self._end(task_id, state, json.loads(task["history"]), "queued", detail=scrubber.scrub(exc))
+            return {"status": "queued", "task_id": task_id, "message": scrubber.scrub(exc)}
+        except AllocationUnavailable as exc:
+            self._end(task_id, state, json.loads(task["history"]), "paused", detail=scrubber.scrub(exc))
+            return {"status": "paused", "task_id": task_id, "message": scrubber.scrub(exc)}
         except Exception as exc:
             self._end(task_id, state, json.loads(task["history"]), "failed", detail=scrubber.scrub(exc))
             raise RuntimeError(scrubber.scrub(exc)) from None
