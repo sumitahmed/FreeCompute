@@ -58,6 +58,10 @@ failure; do not silently change context, weights, template or flags.
   loading on a mismatch or incompatible Linux/CUDA runtime. No CPU fallback or
   alternate engine version is selected. Default acceptance ignores arbitrary
   dataset binaries/weights; no inputs are needed.
+  Direct archive inspection confirmed the engine SHA256 and the CUDA backend's
+  requirements: glibc 2.38 and GLIBCXX 3.4.32. Cell 4 checks glibc before network
+  use; the executable/device probes check remaining loader/driver compatibility.
+  The actual Kaggle runtime has not been observed, so compatibility is unverified.
 - The official Ubuntu CUDA 12.8 release uses upstream release build flags, which
   do **not** enable the historical `GGML_CUDA_NO_VMM=ON`. This is a declared build
   provenance change, not proof of identical allocation or inference behavior.
@@ -169,11 +173,13 @@ still require their individual interactive approvals.
 
 ## Freshly tested locally
 
-- Full unit suite: **199 tests passed in 31.224s**, including ten notebook
+- Full unit suite: **204 tests passed in 30.355s**, including fifteen notebook
   regressions. Existing authenticated loopback CLI/engine and process recovery
   integration cases run as part of that suite.
-- Ten focused notebook tests passed in 0.110s: wrapper/canonical equality,
-  code compilation, retained profile, redaction, pinned checkout ordering,
+- Fifteen focused notebook tests passed in 0.215s: wrapper/canonical equality,
+  code compilation, retained profile, redaction, checksummed download/cache reuse,
+  archive path rejection, engine identity and CUDA detection, runtime failure,
+  pre-download glibc guard, active-worker guard,
   private TCP forwarding/key-file cleanup, transport failure cleanup,
   authenticated readiness/degraded rejection, guarded startup/shutdown,
   optional Tailscale secret selection, and Cloudflare URL capture without a log.
@@ -186,7 +192,7 @@ still require their individual interactive approvals.
 - Documented YAML validates through `HarnessConfig` and composes one Stage 4
   llama.cpp attachment requiring both GPU resources with fixture credentials,
   without network calls.
-- Repository scanner: **154 files**, zero configured secret-pattern findings.
+- Repository scanner: **156 files**, zero configured secret-pattern findings.
   `git diff --check` passes. This is bounded pattern scanning, not perfect DLP.
 - No packaged `harness` production file changed; fresh wheel/install checks are
   not repeated for this notebook/documentation/test-only patch.
