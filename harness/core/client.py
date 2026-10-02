@@ -135,6 +135,7 @@ class KaggleBrainClient:
         max_tokens: int = 2048,
         temperature: float = 0.0,
         cancellation_token: Optional[CancellationToken] = None,
+        model: Optional[str] = None,
     ) -> Iterator[StreamChunk]:
         """
         Stream chat completions token-by-token via Server-Sent Events (SSE).
@@ -142,7 +143,7 @@ class KaggleBrainClient:
         """
         url = f"{self.base_url}/v1/chat/completions"
         payload = {
-            "model": self.model_alias,
+            "model": model or self.model_alias,
             "messages": [m.to_dict() if hasattr(m, "to_dict") else m for m in messages],
             "stream": True,
             "max_tokens": max_tokens,
@@ -175,8 +176,8 @@ class KaggleBrainClient:
                     line = raw_line.decode("utf-8").strip()
                     if not line:
                         continue
-                    if line.startswith("data: "):
-                        data_str = line[6:].strip()
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
                         if data_str == "[DONE]":
                             completed = True
                             yield StreamChunk(delta_content=text_redactor.finish(), delta_reasoning=reasoning_redactor.finish(), stream_complete=True)
