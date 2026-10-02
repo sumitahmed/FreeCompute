@@ -8,6 +8,8 @@ Runs inside the Kaggle GPU container, providing:
 4. Process lifecycle & watchdog to monitor, restart, and safely terminate llama-server.
 """
 
+import hmac
+import re
 import argparse
 import http.server
 import json
@@ -24,10 +26,12 @@ import urllib.request
 
 
 class SupervisorConfig:
-    def __init__(self, port=8081, llama_port=8080, api_key="", llama_cmd=None, log_path=""):
+    def __init__(self, port=8081, llama_port=8080, api_key=None, llama_cmd=None, log_path=""):
         self.port = port
         self.llama_port = llama_port
-        self.api_key = api_key or os.environ.get("SUPERVISOR_API_KEY", "default-kaggle-key")
+        self.api_key = os.environ.get("SUPERVISOR_API_KEY") if api_key is None else api_key
+        if not self.api_key or not self.api_key.strip():
+            raise ValueError("SUPERVISOR_API_KEY must be nonempty")
         self.llama_cmd = llama_cmd or []
         self.log_path = log_path or "/kaggle/working/llama_server.log"
         self.start_time = time.time()
@@ -35,7 +39,15 @@ class SupervisorConfig:
         self.watchdog_active = True
 
 
-config = SupervisorConfig()
+config = None
+
+def scrub(text):
+    text = str(text)
+    if config and config.api_key:
+        text = text.replace(config.api_key, "[REDACTED_SECRET]")
+    text = re.sub(r"(?i)Bearer\s+\S+", "Bearer [REDACTED_TOKEN]", text)
+    text = re.sub(r"https?://[^\s]+", "[REDACTED_URL]", text)
+    return text
 
 
 def get_container_uptime_seconds():
@@ -72,7 +84,7 @@ def get_gpu_telemetry():
                 })
         return gpus
     except Exception as exc:
-        return [{"error": str(exc)}]
+        return [{"error": scrub(exc)}]
 
 
 def check_llama_health():
@@ -108,24 +120,25 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, format, *args):
-        sys.stderr.write(f"[SUPERVISOR {self.address_string()}] {format % args}\n")
+        sys.stderr.write(scrub(f"[SUPERVISOR {self.address_string()}] {format % args}") + "\n")
 
     def check_auth(self):
         """Validate Authorization: Bearer <API_KEY> header."""
-        if not config.api_key:
-            return True
+        if config is None or not config.api_key:
+            self.send_error_response(503, "Supervisor authentication is not configured")
+            return False
         auth_header = self.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             self.send_error_response(401, "Missing or invalid Authorization header. Expected Bearer token.")
             return False
         token = auth_header[7:].strip()
-        if token != config.api_key:
+        if not hmac.compare_digest(token.encode(), config.api_key.encode()):
             self.send_error_response(403, "Forbidden: Invalid API Key.")
             return False
         return True
 
     def send_error_response(self, status_code, message):
-        body = json.dumps({"error": {"message": message, "code": status_code}}).encode("utf-8")
+        body = json.dumps({"error": {"message": scrub(message), "code": status_code}}).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -133,17 +146,22 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self.check_auth():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
         if path == "/health":
             llama_ok = check_llama_health()
-            container_uptime = get_container_uptime_seconds()
+            container_uptime = time.time() - config.start_time
             gpus = get_gpu_telemetry()
             payload = {
                 "status": "healthy" if llama_ok else "degraded",
                 "supervisorUptimeSeconds": round(time.time() - config.start_time, 1),
-                "containerUptimeSeconds": round(container_uptime, 1),
+                "sessionAgeSeconds": round(container_uptime, 1),
+                "sessionAgeSource": "supervisor_start_estimate",
+                "isEstimate": True,
+                "linuxUptimeSeconds": round(get_container_uptime_seconds(), 1),
                 "maxSessionSeconds": 43200,
                 "secondsRemainingIn12hSession": max(0, round(43200 - container_uptime, 1)),
                 "llamaServer": {
@@ -164,7 +182,7 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
         if not self.check_auth():
             return
 
-        if path.startswith("/v1/") or path in ("/slots", "/props"):
+        if path == "/v1/models" and not parsed.query:
             self.proxy_to_llama("GET")
         else:
             self.send_error_response(404, f"Endpoint {path} not found.")
@@ -176,7 +194,10 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
         if not self.check_auth():
             return
 
-        if path == "/control/restart":
+        if path == "/control/restart" and not parsed.query:
+            if not config.llama_cmd:
+                self.send_error_response(409, "Supervisor does not own a restart command")
+                return
             if config.llama_process and config.llama_process.poll() is None:
                 config.llama_process.terminate()
                 try:
@@ -192,14 +213,20 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if path.startswith("/v1/"):
+        if path == "/v1/chat/completions" and not parsed.query:
             self.proxy_to_llama("POST")
         else:
             self.send_error_response(404, f"Endpoint {path} not found.")
 
     def proxy_to_llama(self, method):
         target_url = f"http://127.0.0.1:{config.llama_port}{self.path}"
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            if not 0 <= content_length <= 16 * 1024 * 1024 or self.headers.get("Transfer-Encoding"):
+                raise ValueError()
+        except ValueError:
+            self.send_error_response(400, "Invalid request body length")
+            return
         body = self.rfile.read(content_length) if content_length > 0 else None
 
         headers = {}
@@ -221,10 +248,12 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
                     if k.lower() == "content-type" and "text/event-stream" in v.lower():
                         is_sse = True
                     self.send_header(k, v)
+                self.send_header("Connection", "close")
+                self.close_connection = True
                 self.end_headers()
 
                 while True:
-                    chunk = resp.read(1024 if is_sse else 8192)
+                    chunk = resp.readline() if is_sse else resp.read(8192)
                     if not chunk:
                         break
                     try:
@@ -233,15 +262,9 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
                     except (BrokenPipeError, ConnectionResetError):
                         break
         except urllib.error.HTTPError as err:
-            err_body = err.read()
-            self.send_response(err.code)
-            for k, v in err.headers.items():
-                if k.lower() != "transfer-encoding":
-                    self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(err_body)
-        except Exception as exc:
-            self.send_error_response(502, f"Failed to connect to internal llama-server: {str(exc)}")
+            self.send_error_response(err.code, "Internal inference backend returned an error")
+        except Exception:
+            self.send_error_response(502, "Internal inference backend unavailable")
 
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -249,15 +272,9 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_address = True
 
 
-def run_supervisor(port=8081, llama_port=8080, api_key="", llama_cmd=None, log_path=""):
-    config.port = port
-    config.llama_port = llama_port
-    if api_key:
-        config.api_key = api_key
-    if llama_cmd:
-        config.llama_cmd = llama_cmd
-    if log_path:
-        config.log_path = log_path
+def run_supervisor(port=8081, llama_port=8080, api_key=None, llama_cmd=None, log_path=""):
+    global config
+    config = SupervisorConfig(port, llama_port, api_key, llama_cmd, log_path)
 
     if config.llama_cmd:
         start_llama_server()
@@ -278,7 +295,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kaggle llama-server Authenticated Supervisor")
     parser.add_argument("--port", type=int, default=8081, help="Supervisor external port (default: 8081)")
     parser.add_argument("--llama-port", type=int, default=8080, help="Internal llama-server port (default: 8080)")
-    parser.add_argument("--api-key", type=str, default="", help="Bearer token for API access")
+    parser.add_argument("--api-key", type=str, default=None, help="Bearer token for API access")
     parser.add_argument("--log-path", type=str, default="/kaggle/working/llama_server.log", help="Log output file path")
     args = parser.parse_args()
 
