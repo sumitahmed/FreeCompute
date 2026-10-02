@@ -1,5 +1,6 @@
 """Authenticated loopback adapters, installed-compatible config and actual CLI routes."""
 import base64
+from dataclasses import replace
 import http.server
 import json
 import os
@@ -16,6 +17,7 @@ from unittest.mock import patch
 import test_runtime_cli as legacy
 from harness.config import HarnessConfig
 from harness.core.engines import EngineFailure
+from harness.core.client import CancellationToken
 from harness.core.service import CoreService
 from harness.storage.runtime import runtime_home
 
@@ -220,6 +222,49 @@ class EngineAndCliTests(unittest.TestCase):
         self.assertFalse(adapter.describe()["streaming"])
         with self.assertRaises(EngineFailure):
             adapter.stream(None, [], [], None)
+
+    def unfinished_image_receipt(self):
+        core = self.start()
+        profile = core.registry.profile("image")
+        task_id = core.sessions.submit("fixture image", profile, "image", [], [], operation="image")
+        result = core.inference.image(core.task(task_id), profile, "fixture image", CancellationToken())
+        return task_id, result
+
+    def test_image_receipt_recovers_on_restart_without_another_remote_job(self):
+        task_id, result = self.unfinished_image_receipt()
+        sid = self.core.task(task_id)["session_id"]
+        self.core.close()
+        core = self.start()
+        recovered = core.resume(sid)
+        self.assertEqual(recovered["status"], "completed")
+        self.assertEqual(recovered["final_answer"], result["file_path"])
+        self.assertEqual(Path(result["file_path"]).read_bytes(), PNG)
+        self.assertEqual(self.server.image_jobs, 1)
+        self.assertEqual(core.store.one("SELECT state FROM inference_attempts")["state"], "consumed")
+
+    def test_changed_image_artifact_is_not_regenerated_after_restart(self):
+        task_id, result = self.unfinished_image_receipt()
+        Path(result["file_path"]).write_bytes(b"changed after receipt")
+        self.core.close()
+        core = self.start()
+        with self.assertRaisesRegex(RuntimeError, "without regeneration"):
+            core.run_next()
+        self.assertEqual(core.task(task_id)["state"], "failed")
+        self.assertEqual(self.server.image_jobs, 1)
+        self.assertEqual(Path(result["file_path"]).read_bytes(), b"changed after receipt")
+
+    def test_image_model_switch_and_custom_timeout_are_not_claimed(self):
+        core = self.start()
+        adapter = core.registry.engine("image-worker")
+        with self.assertRaises(EngineFailure) as caught:
+            adapter.generate(replace(core.registry.profile("image"), model="another-model"), "image", CancellationToken())
+        self.assertTrue(caught.exception.remote_not_started)
+        self.assertEqual(self.server.image_jobs, 0)
+        core.close()
+        self.core = None
+        self.data["workers"][2]["timeout_seconds"] = 10
+        with self.assertRaisesRegex(ValueError, "timeout"):
+            CoreService.from_config(HarnessConfig(**self.data))
 
     def test_actual_cli_selects_workers_edits_tests_and_resumes_without_replay(self):
         output = self.cli("/workers\n/models\nhello\n/model qwen kaggle-qwen\n/new\nedit and test\ny\ny\n/queue\n/sessions\nexit\n")

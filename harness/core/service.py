@@ -325,7 +325,8 @@ class CoreService:
                     state.phase = "failed"
                     self._end(task_id, state, history, "context_overflow", detail="Input estimate plus reserved completion exceeds declared capacity; reduce history/context or start a new session")
                     break
-                completed = self.store.one("SELECT * FROM inference_attempts WHERE task_id=? AND state='completed' ORDER BY rowid DESC LIMIT 1", (task_id,))
+                completed = self.store.one("SELECT * FROM inference_attempts WHERE task_id=? AND profile_id=? AND context_epoch=? AND state IN ('completed','failed') ORDER BY rowid DESC LIMIT 1",
+                                           (task_id, task["profile_id"], task["context_epoch"]))
                 if completed:
                     saved = json.loads(completed["response"])
                     reply = InferenceResponse(error="Redacted inference receipt requires a fresh proposal") if saved["requires_reproposal"] else InferenceResponse(**saved["response"])
@@ -396,6 +397,10 @@ class CoreService:
             task = self.task(session["current_task_id"])
             if task["state"] in TERMINAL:
                 return self._summary(task["id"])
+            receipt = self.store.one("SELECT id FROM inference_attempts WHERE task_id=? AND state IN ('completed','failed')", (task["id"],))
+            unstarted = self.store.one("SELECT id FROM inference_queue WHERE task_id=? AND state='queued'", (task["id"],))
+            if receipt or unstarted:
+                return self._run_image_task(task["id"])
             raise ValueError("Interrupted image job has no confirmed task receipt; inspect the provider job and reconcile inference capacity before a new request")
         return self.run(session["current_task_id"], approval_resolver=approval_resolver)
 
@@ -447,16 +452,19 @@ class CoreService:
             return {"status": "waiting", "final_answer": "", "detail": "No queued task currently has an eligible free worker"}
         command = self.store.one("SELECT operation FROM commands WHERE task_id=?", (task_id,))
         if command["operation"] == "image":
-            if not self._run_lock.acquire(blocking=False):
-                raise RuntimeError("This local core already has an active task")
-            try:
-                self.cancellation_token = CancellationToken()
-                self._execute_image_task(task_id)
-                return self._summary(task_id)
-            finally:
-                self._running_task_id = None
-                self._run_lock.release()
+            return self._run_image_task(task_id)
         return self.run(task_id, approval_resolver=approval_resolver)
+
+    def _run_image_task(self, task_id):
+        if not self._run_lock.acquire(blocking=False):
+            raise RuntimeError("This local core already has an active task")
+        try:
+            self.cancellation_token = CancellationToken()
+            self._execute_image_task(task_id)
+            return self._summary(task_id)
+        finally:
+            self._running_task_id = None
+            self._run_lock.release()
 
     def list_sessions(self):
         return self.sessions.list_sessions()

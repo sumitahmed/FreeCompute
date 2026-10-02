@@ -55,7 +55,9 @@ class FakeEngine:
 
     def generate(self, profile, prompt, cancellation):
         self.calls.append(profile.profile_id)
-        return {"file_path": "fixture-image.png", "job_id": "fake-job"}
+        target = self.workspace / "fixture-image.png"
+        target.write_bytes(b"deterministic image fixture")
+        return {"file_path": str(target), "job_id": "fake-job"}
 
 
 class WorkerSchedulerTests(unittest.TestCase):
@@ -68,6 +70,7 @@ class WorkerSchedulerTests(unittest.TestCase):
 
     def start(self):
         self.local, self.qwen, self.image = FakeEngine(), FakeEngine(), FakeEngine(IMAGE.capabilities)
+        self.image.workspace = self.workspace
         self.core = CoreService(self.workspace, self.local, SMALL, state_dir=self.base / "state", system_prompt="fixture")
         self.core.attach_worker(KAGGLE, [QWEN], self.qwen)
         self.core.attach_worker(IMAGE_WORKER, [IMAGE], self.image)
@@ -112,6 +115,22 @@ class WorkerSchedulerTests(unittest.TestCase):
         self.assertEqual(self.core.run(self.submit(QWEN, "private-qwen"))["status"], "completed")
         self.assertEqual(engine.calls, ["qwen"])
         self.assertEqual(self.qwen.calls, [])
+
+    def test_duplicate_profile_attachment_is_rejected_before_dispatch(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate model profile"):
+            self.core.attach_worker(KAGGLE, [QWEN, QWEN], self.qwen)
+        self.assertEqual(self.qwen.calls, [])
+
+    def test_failed_model_receipt_is_consumed_after_restart_without_retry(self):
+        task_id = self.submit(QWEN)
+        self.qwen.failure = TimeoutError("fixture inference timeout")
+        response, _, _, _ = self.core.inference.infer(self.core.task(task_id), QWEN, [], [], CancellationToken())
+        self.assertIsNotNone(response.error)
+        self.core.close()
+        self.start()
+        self.assertEqual(self.core.run_next()["status"], "failed")
+        self.assertEqual(self.qwen.calls, [])
+        self.assertEqual(len(self.core.store.all("SELECT * FROM resource_claims")), 2)
 
     def test_capability_and_route_mismatch_rejected_before_dispatch(self):
         with self.assertRaises(ValueError):

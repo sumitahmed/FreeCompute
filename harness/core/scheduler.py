@@ -254,7 +254,13 @@ class Scheduler:
         return self.store.all("SELECT q.*,t.state AS task_state FROM inference_queue q JOIN tasks t ON t.id=q.task_id WHERE q.state IN ('queued','running','quarantined') ORDER BY q.sequence")
 
     def next_task(self):
-        receipt = self.store.one("SELECT q.task_id FROM inference_queue q JOIN tasks t ON t.id=q.task_id JOIN inference_attempts a ON a.task_id=t.id WHERE a.state IN ('completed','failed') AND t.state NOT IN ('completed','failed','malformed','truncated','incomplete','max_turns','context_overflow','cancelled') ORDER BY q.sequence LIMIT 1")
+        # Consume a committed result without needing healthy/free remote capacity.
+        receipt = self.store.one("""SELECT q.task_id FROM inference_queue q
+            JOIN tasks t ON t.id=q.task_id JOIN inference_attempts a ON a.task_id=t.id
+            WHERE a.state IN ('completed','failed') AND a.profile_id=t.profile_id
+            AND a.context_epoch=t.context_epoch
+            AND t.state NOT IN ('completed','failed','malformed','truncated','incomplete','max_turns','context_overflow','cancelled')
+            ORDER BY q.sequence LIMIT 1""")
         if receipt:
             return receipt["task_id"]
         for row in self.list_queue():
