@@ -1,6 +1,7 @@
 """
-harness/core/prompt.py — Prompt builder and prefix cache stabilizer for Qwen3.8.
-Enforces byte-for-byte prefix stability for llama.cpp KV cache reuse and formats tool definitions.
+harness/core/prompt.py — Generic system prefix and tool schema composition.
+CoreService freezes the prefix within a context epoch. Cache reuse is an
+opportunity dependent on the engine/profile, not a guaranteed hit rate or TTFT.
 """
 
 from typing import List, Dict, Any, Optional
@@ -49,7 +50,7 @@ class PromptBuilder:
     def build_messages(self, conversation_history: List[Message]) -> List[Dict[str, Any]]:
         """
         Assemble the full message list for /v1/chat/completions.
-        Ensures the system message is always identical at index 0 to maximize KV cache hits.
+        Legacy convenience builder; production sessions persist a frozen prefix.
         """
         messages = [{"role": "system", "content": self.build_system_content()}]
         for msg in conversation_history:

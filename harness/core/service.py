@@ -428,6 +428,15 @@ class CoreService:
     def generate_image(self, prompt):
         if self.image_provider is None or not self.image_provider.server_url:
             raise ValueError("Image worker is unconfigured; set FREECOMPUTE_IMAGE_SERVER or /image-server")
+        if not self._run_lock.acquire(blocking=False):
+            raise RuntimeError("Finish/cancel the active task before starting image inference")
+        try:
+            self.cancellation_token = CancellationToken()
+            return self._generate_image(prompt)
+        finally:
+            self._run_lock.release()
+
+    def _generate_image(self, prompt):
         profile = ModelProfile("comfy-image", "comfy-worker", "ComfyUI-default", "ComfyUI", frozenset({"image_gen"}))
         task_id = self.sessions.submit(prompt, profile, "Image generation", [], [], operation="image")
         task = self.task(task_id)
@@ -439,3 +448,7 @@ class CoreService:
         except Exception as exc:
             self._end(task_id, state, json.loads(task["history"]), "failed", detail=scrubber.scrub(exc))
             raise RuntimeError(scrubber.scrub(exc)) from None
+        except KeyboardInterrupt:
+            self.cancellation_token.cancel()
+            self._end(task_id, state, json.loads(task["history"]), "cancelled", detail="Image job stopped locally; remote outcome unconfirmed")
+            raise

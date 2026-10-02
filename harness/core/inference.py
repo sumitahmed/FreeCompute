@@ -180,5 +180,8 @@ class InferenceBroker:
         except Exception as exc:
             self._finish(task, attempt, InferenceResponse(error=scrubber.scrub(exc)), None, None, False)
             raise RuntimeError(scrubber.scrub(exc)) from None
+        except KeyboardInterrupt:
+            self._finish(task, attempt, InferenceResponse(error="Image interrupted locally; remote job outcome unconfirmed"), None, None, False)
+            raise
         finally:
             self._slot.release()

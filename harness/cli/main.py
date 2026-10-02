@@ -327,6 +327,8 @@ def run_interactive_repl(
                         pass
             except Exception as exc:
                 print(fmt.red(f"● [IMAGE ERROR] {scrubber.scrub(str(exc))}"))
+            except KeyboardInterrupt:
+                print(fmt.red("Image stopped locally; remote job outcome is unconfirmed."))
             continue
 
         # Check if the user invoked a registered skill
