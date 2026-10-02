@@ -61,8 +61,10 @@ def main():
     core.tools.register(ToolDefinition("count_effect", "Approved counter fixture", {"type": "object", "properties": {}}, effect, True))
     def approve(name, args):
         increment(workspace / "approvals.txt")
-        return True
+        return not (mode == "create" and stage == "after_denial")
     def model_receipt(event):
+        if mode == "create" and stage == "after_denial" and event["kind"] == "approval.decided" and event["payload"]["decision"] == "denied":
+            os._exit(73)
         if mode == "create" and event["kind"] == "model.received":
             if stage == "after_inference_receipt" and engine.requests == 1:
                 os._exit(73)
@@ -70,6 +72,10 @@ def main():
                 os._exit(73)
     core.subscribe(model_receipt)
     try:
+        if mode == "hold":
+            print("ready", flush=True)
+            sys.stdin.readline()
+            return
         if mode == "create":
             result = core.run(core.submit("count one effect", allowed_tools=["count_effect"]), approval_resolver=approve)
         else:

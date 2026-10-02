@@ -20,7 +20,12 @@ class CoreClient:
             elif kind == "tool.proposed" and callbacks.get("on_tool_proposed"):
                 callbacks["on_tool_proposed"](payload["tool"], payload["arguments"])
             elif kind in {"tool.completed", "tool.denied", "tool.outcome_unknown", "tool.replayed"} and callbacks.get("on_tool_executed"):
-                callbacks["on_tool_executed"](payload["tool"], payload["result"])
+                result = dict(payload["result"])
+                if kind == "tool.replayed":
+                    result["receipt_replayed"] = True
+                if kind == "tool.outcome_unknown":
+                    result["outcome_unknown"] = True
+                callbacks["on_tool_executed"](payload["tool"], result)
             elif phase:
                 if kind == "model.requested":
                     phase("requesting_model", f"Model request {payload['attempt_id'][:8]}")

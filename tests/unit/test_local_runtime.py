@@ -353,6 +353,55 @@ class LocalRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "compatible profile"):
             manager.restrictions(manager.get_skill("image"), {"write_file"}, {"text"})
 
+    def test_reentrant_action_cannot_overwrite_a_completed_receipt(self):
+        core = self.start(tool_reply([("write", "write_file", {"path": "a.txt", "content": "one"})]), text_reply())
+        def approve(*_):
+            action = core.store.one("SELECT id FROM actions ORDER BY rowid DESC LIMIT 1")
+            with self.assertRaisesRegex(RuntimeError, "re-enter"):
+                core.tool_broker.execute(action["id"], resolver=lambda *_: True)
+            return True
+        result = core.run(core.submit("write once"), approval_resolver=approve)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(core.store.one("SELECT COUNT(*) n FROM approvals")["n"], 1)
+        self.assertEqual(core.store.one("SELECT state FROM actions")["state"], "completed")
+        self.assertEqual((self.workspace / "a.txt").read_text(), "one")
+
+    def test_stream_byte_limit_stops_untrusted_output_without_proposals(self):
+        core = self.start([StreamChunk(delta_content="X" * 70000)])
+        result = core.run(core.submit("hi"))
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(core.inference.allocation()["state"], "quarantined")
+        self.assertEqual(core.store.one("SELECT COUNT(*) n FROM actions")["n"], 0)
+        self.assertIn("byte allowance", core.store.events(result["session_id"])[-1]["payload"]["detail"])
+
+    def test_legacy_undo_remains_readable_and_runs_through_durable_approval(self):
+        from harness.storage.undo import UndoManager
+        target = self.workspace / "legacy.txt"
+        target.write_text("old")
+        old = UndoManager(str(self.workspace), str(self.base / "legacy"))
+        snapshot = old.record_pre_change("legacy.txt")
+        target.write_text("new")
+        old.record_post_change(snapshot, "old -> new")
+        original = old.history_file.read_bytes()
+        core = self.start()
+        core.attach_legacy_undo(old)
+        self.assertEqual(old.history_file.read_bytes(), original)
+        self.assertEqual(core.get_last_diff(), "old -> new")
+        self.assertEqual(core.undo_last()["status"], "rejected")
+        self.assertEqual(target.read_text(), "new")
+        self.assertEqual(old.history_file.read_bytes(), original)
+        self.assertEqual(core.undo_last(approval_callback=lambda *_: True)["status"], "success")
+        self.assertEqual(target.read_text(), "old")
+        self.assertEqual(len(self.engine.requests), 0)
+        self.assertEqual(core.store.one("SELECT COUNT(*) n FROM actions")["n"], 2)
+
+    def test_empty_skill_list_shows_invalid_manifest_diagnostic(self):
+        project = self.workspace / "skills"
+        project.mkdir()
+        (project / "bad.md").write_text("---\nallowed_tools: write_file\n---\nBad", encoding="utf-8")
+        manager = SkillManager(str(self.workspace), str(self.base / "missing-user"))
+        self.assertIn("Invalid skill", manager.format_skills_list())
+
 
 if __name__ == "__main__":
     unittest.main()

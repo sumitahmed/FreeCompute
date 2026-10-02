@@ -124,6 +124,8 @@ class RuntimeCliTests(unittest.TestCase):
     def test_actual_cli_denial_no_effect_and_normal_text(self):
         output = self.cli("edit and test\nn\nn\nhello\nexit\n")
         self.assertIn("Action REJECTED", output)
+        self.assertIn("[TOOL DENIED]", output)
+        self.assertNotIn("write_file completed successfully", output)
         self.assertIn("Hello from fixture", output)
         self.assertFalse((self.workspace / "cli.txt").exists())
         db = self.db()

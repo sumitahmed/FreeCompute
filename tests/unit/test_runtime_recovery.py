@@ -108,6 +108,31 @@ class RuntimeProcessRecoveryTests(unittest.TestCase):
             self.assertEqual(result["counter"], 0)
             self.assertEqual(result["allocation"], "idle")
 
+    def test_restart_after_denial_before_registry_receipt_keeps_denial(self):
+        with tempfile.TemporaryDirectory(prefix="fc-durable-denial-") as temporary:
+            directory = Path(temporary)
+            session_id, _, actions = self.crash("after_denial", directory)
+            self.assertEqual(actions[0][2], "denied")
+            result = self.resume("resume", directory, session_id)
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["counter"], 0)
+            self.assertEqual(result["approvals"], 1)
+
+    def test_workspace_owner_lock_refuses_a_second_process(self):
+        from harness.storage.runtime import RuntimeStore
+        with tempfile.TemporaryDirectory(prefix="fc-owner-process-") as temporary:
+            directory = Path(temporary)
+            child = subprocess.Popen([sys.executable, str(SCRIPT), "hold", "", str(directory)],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+            try:
+                self.assertEqual(child.stdout.readline().strip(), "ready")
+                with self.assertRaises(RuntimeError):
+                    RuntimeStore(directory / "workspace", directory / "second-state")
+            finally:
+                stdout, stderr = child.communicate("release\n", timeout=10)
+            self.assertEqual(child.returncode, 0, stdout + stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

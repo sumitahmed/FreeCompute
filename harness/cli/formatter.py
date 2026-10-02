@@ -136,11 +136,18 @@ class TerminalFormatter:
 
     def print_tool_result(self, tool_name: str, res: Dict[str, Any]):
         """Render tool execution output with clear visual demarcation."""
-        if "error" in res:
+        if res.get("outcome_unknown"):
+            print(f"● {self.yellow('[OUTCOME UNKNOWN]')}: {tool_name} requires reconciliation.")
+        elif res.get("status") == "rejected":
+            print(f"● {self.yellow('[TOOL DENIED]')}: {scrubber.scrub(res.get('message', 'Approval required'))}")
+        elif res.get("status") == "reconciled":
+            print(f"● {self.yellow('[RECONCILED]')}: {tool_name}: {res.get('outcome')}; explicit operator decision.")
+        elif "error" in res:
             print(f"● {self.red('[TOOL ERROR]')}: {scrubber.scrub(res['error'])}")
         elif "diff" in res:
             diff_text = res["diff"]
-            print(f"● {self.green('[PATCH APPLIED]')}:")
+            tag = '[RECORDED PATCH]' if res.get('receipt_replayed') else '[PATCH APPLIED]'
+            print(f"● {self.green(tag)}:")
             for line in diff_text.splitlines()[:15]:
                 if line.startswith("+"):
                     print(self.green(f"  {line}"))
@@ -153,7 +160,9 @@ class TerminalFormatter:
         elif "exit_code" in res:
             code = res["exit_code"]
             tag = self.green("[EXIT 0]") if code == 0 else self.red(f"[EXIT {code}]")
-            print(f"● {tag} Command finished in {res.get('duration_seconds', 0.0):.2f}s")
+            duration = res.get('duration_ms', 0.0) / 1000 if 'duration_ms' in res else res.get('duration_seconds', 0.0)
+            label = 'Recorded command result' if res.get('receipt_replayed') else 'Command finished'
+            print(f"● {tag} {label} in {duration:.2f}s")
             stdout = res.get("stdout", "").strip()
             stderr = res.get("stderr", "").strip()
             if stdout:
