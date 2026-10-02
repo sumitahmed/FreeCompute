@@ -22,6 +22,9 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
         self.cells = [''.join(c['source']) for c in self.notebook['cells']]
         self.output = io.StringIO()
         self.bearer, self.tailkey = 'fixture-bearer', 'fixture-tailkey'
+        libc = patch('platform.libc_ver', return_value=('glibc', '2.39'))
+        libc.start()
+        self.addCleanup(libc.stop)
 
     def configuration(self, transport='cloudflare'):
         secrets = { 'FREECOMPUTE_API_KEY': self.bearer, 'TAILSCALE_AUTHKEY': self.tailkey }
@@ -170,6 +173,14 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
         state['llama_proc'] = types.SimpleNamespace(poll=lambda: None)
         with self.assertRaisesRegex(RuntimeError, 'already running'):
             exec(self.cells[4], state)
+
+    def test_download_checks_glibc_before_network_use(self):
+        state = self.configuration()
+        with patch('platform.libc_ver', return_value=('glibc', '2.35')), \
+             patch.object(urllib.request, 'urlopen') as download:
+            with self.assertRaisesRegex(RuntimeError, 'glibc >= 2.38'):
+                exec(self.cells[4], state)
+        download.assert_not_called()
 
     def test_transport_forwards_tcp_and_removes_key_file_without_exposing_it(self):
         state = self.configuration('tailscale')

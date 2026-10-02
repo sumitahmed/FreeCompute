@@ -5,6 +5,7 @@
 import hashlib
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
@@ -20,6 +21,9 @@ RELEASE_TAG = 'b11206'
 RELEASE_COMMIT = '2b129ccfa03aea330d2d9ac4650a10de393dbe3a'
 if CONFIG['LLAMA_COMMIT'] != RELEASE_COMMIT:
     raise RuntimeError('The downloadable release does not match the configured engine pin.')
+libc_name, libc_version = platform.libc_ver()
+if libc_name != 'glibc' or tuple(int(part) for part in libc_version.split('.')[:2]) < (2, 38):
+    raise RuntimeError(f'This release needs glibc >= 2.38; observed {libc_name} {libc_version}. Stop before downloading.')
 
 # Official CUDA 12.8 x64 release, including its matching CUDA runtime libraries.
 # These are release-build flags, not the historical CUDA_NO_VMM source build.
