@@ -19,7 +19,7 @@ class CoreClient:
                 callbacks["on_reasoning"](payload["text"])
             elif kind == "tool.proposed" and callbacks.get("on_tool_proposed"):
                 callbacks["on_tool_proposed"](payload["tool"], payload["arguments"])
-            elif kind in {"tool.completed", "tool.denied", "tool.outcome_unknown"} and callbacks.get("on_tool_executed"):
+            elif kind in {"tool.completed", "tool.denied", "tool.outcome_unknown", "tool.replayed"} and callbacks.get("on_tool_executed"):
                 callbacks["on_tool_executed"](payload["tool"], payload["result"])
             elif phase:
                 if kind == "model.requested":

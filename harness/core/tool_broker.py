@@ -2,6 +2,7 @@
 import json
 import threading
 import uuid
+from contextlib import contextmanager
 
 from harness.security import scrubber
 from harness.storage.runtime import encode, fingerprint
@@ -20,6 +21,18 @@ class DurableToolBroker:
         self._lock = threading.RLock()
         self._fault_hook = fault_hook
         self.legacy_undo = None
+        self._operation_active = False
+
+    @contextmanager
+    def _operation(self):
+        with self._lock:
+            if self._operation_active:
+                raise RuntimeError("Tool operations cannot re-enter an approval/execution callback")
+            self._operation_active = True
+            try:
+                yield
+            finally:
+                self._operation_active = False
 
     def fault(self, stage, action):
         if self._fault_hook:
@@ -90,12 +103,23 @@ class DurableToolBroker:
         self.fault("before_execution", action)
 
     def execute(self, action_id, resolver=None, cancellation=None):
-        with self._lock:
+        with self._operation():
             action = self.store.one("SELECT * FROM actions WHERE id=?", (action_id,))
             if not action:
                 raise ValueError("Unknown action identity")
+            if action["version"] != 1:
+                raise ValueError("Unsupported action version; explicit migration required")
             if action["state"] in {"completed", "denied"}:
-                return json.loads(action["result"])
+                if action["result"] is None:
+                    raise ValueError("Terminal action is missing its durable receipt; inspect local state")
+                result = json.loads(action["result"])
+                task = self.store.one("SELECT * FROM tasks WHERE id=?", (action["task_id"],))
+                with self.store.transaction() as db:
+                    event = self.store.event(db, task["session_id"], task["id"], "tool.replayed", {
+                        "action_id": action_id, "call_id": action["call_id"], "tool": action["name"],
+                        "result": result, "cached": True}, entity_id=action_id, revision=action["revision"])
+                self.publish(event)
+                return result
             if action["state"] in {"executing", "outcome_unknown"}:
                 raise OutcomeUnknown("Action outcome is uncertain; reconcile before retry")
             task = self.store.one("SELECT * FROM tasks WHERE id=?", (action["task_id"],))
@@ -174,7 +198,7 @@ class DurableToolBroker:
 
     def reconcile(self, action_id, outcome, expected_hash=None, resolver=None):
         """An explicit operator assertion plus a file witness; never executes a retry."""
-        with self._lock:
+        with self._operation():
             action = self.store.one("SELECT * FROM actions WHERE id=?", (action_id,))
             if not action or action["state"] != "outcome_unknown" or outcome not in {"completed", "not_executed"}:
                 raise ValueError("Select an uncertain action and completed/not_executed outcome")

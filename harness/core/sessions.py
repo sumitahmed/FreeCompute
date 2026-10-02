@@ -18,7 +18,7 @@ class SessionManager:
 
     def submit(self, prompt, profile, system, schemas, allowed_tools, *, session_id=None, request_id=None,
                max_turns=15, selected_context=None, operation="task"):
-        if not isinstance(prompt, str) or not prompt.strip() or not 0 < max_turns <= 100:
+        if not isinstance(prompt, str) or not prompt.strip() or not isinstance(max_turns, int) or isinstance(max_turns, bool) or not 0 < max_turns <= 100:
             raise ValueError("A nonempty prompt and a turn budget of 1..100 are required")
         request_id = request_id or identity()
         exact = {"prompt": prompt, "profile_id": profile.profile_id, "session_id": session_id,
@@ -39,6 +39,9 @@ class SessionManager:
                 current = db.execute("SELECT state FROM tasks WHERE id=?", (session["current_task_id"],)).fetchone()
                 if current[0] not in TERMINAL:
                     raise ValueError("Session has an unfinished task; resume or reconcile it first")
+                previous = db.execute("SELECT driver FROM tasks WHERE id=?", (session["current_task_id"],)).fetchone()
+                if NativeState.recover(previous[0]).phase == "pending":
+                    raise ValueError("Failed session has unresolved proposals; inspect its actions and start a new session with /new")
             if not session:
                 session_id = identity()
                 db.execute("""INSERT INTO sessions(id,workspace_id,version,revision,status,profile_id,context_epoch,

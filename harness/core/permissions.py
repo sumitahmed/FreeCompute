@@ -1,7 +1,7 @@
 """Durable, single-action decisions. Capability declarations never grant consent."""
 import json
 
-from harness.storage.runtime import fingerprint, identity, timestamp
+from harness.storage.runtime import encode, fingerprint, identity, timestamp
 
 
 class PermissionService:
@@ -45,6 +45,10 @@ class PermissionService:
             state = "approved" if approved else "denied"
             db.execute("UPDATE approvals SET state=?,decided_at=? WHERE id=?", (state, timestamp(), approval_id))
             db.execute("UPDATE actions SET state=?,revision=revision+1 WHERE id=?", (state, action["id"]))
+            if not approved:
+                # Denial and its receipt are inseparable, even if the process exits
+                # before the registry returns its rejection to the orchestration loop.
+                db.execute("UPDATE actions SET result=? WHERE id=?", (encode({"status": "rejected", "message": "Approval denied or stale"}), action["id"]))
             task = self.store.update_task(db, task["id"], state="running")
             event = self.store.event(db, task["session_id"], task["id"], "approval.decided",
                                     {"approval_id": approval_id, "action_id": action["id"], "decision": state,

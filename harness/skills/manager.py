@@ -84,11 +84,15 @@ class SkillManager:
             self._scan_directory(self.project_skills_dir, scope="project")
 
         # Rebuild aliases after overrides; a replaced user command must not survive.
+        conflicting_commands = set()
         for manifest in self.skills.values():
             key = manifest.slash_command.lower()
+            if key in conflicting_commands:
+                continue
             if key in self.command_map and self.command_map[key].name != manifest.name:
                 self.diagnostics.append(f"Duplicate skill command {key}; resolve the manifest conflict")
                 self.command_map.pop(key)
+                conflicting_commands.add(key)
             else:
                 self.command_map[key] = manifest
 
@@ -231,7 +235,7 @@ class SkillManager:
     def format_skills_list(self) -> str:
         """Render a readable summary table of all discovered skills."""
         if not self.skills:
-            return "No skills currently discovered. Place SKILL.md in ./skills/<name>/."
+            return scrubber.scrub("\n".join(["No skills currently discovered. Place SKILL.md in ./skills/<name>/.", *self.diagnostics]))
 
         lines = [
             "Available Skills & Slash Commands:",

@@ -7,6 +7,8 @@ from harness.core.native_driver import InferenceResponse, strict_json
 from harness.security import scrubber, StreamRedactor
 from harness.storage.runtime import encode, fingerprint, identity, timestamp
 
+MAX_STREAM_BYTES = 4 * 1024 * 1024
+
 
 def persistent_response(response):
     value = asdict(response)
@@ -91,10 +93,16 @@ class InferenceBroker:
         reason, done, usage, ttft_ms = None, False, None, None
         content_redactor, reasoning_redactor = StreamRedactor(), StreamRedactor()
         error = None
+        received_bytes = 0
+        stream_limit = min(MAX_STREAM_BYTES, max(8192, profile.reserved_completion * 32))
         try:
             for chunk in self.engine.stream(profile, messages, tools, cancellation):
                 if cancellation.is_cancelled:
                     break
+                received_bytes += len(json.dumps({"text": chunk.delta_content, "reasoning": chunk.delta_reasoning,
+                    "tools": chunk.tool_call_deltas}, ensure_ascii=True).encode("utf-8"))
+                if received_bytes > stream_limit:
+                    raise ValueError("Inference output exceeded the profile's stream byte allowance; no proposals accepted")
                 if done and (chunk.delta_content or chunk.tool_call_deltas or chunk.delta_reasoning):
                     raise ValueError("Content received after stream completion")
                 if chunk.finish_reason:

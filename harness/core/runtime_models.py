@@ -13,6 +13,11 @@ class Worker:
     observed_resources: dict = field(default_factory=dict)
     version: int = 1
 
+    def __post_init__(self):
+        object.__setattr__(self, "capabilities", frozenset(self.capabilities))
+        if self.version != 1 or not self.worker_id or not self.location or not self.engine:
+            raise ValueError("Unsupported worker version or missing identity/location/engine")
+
 
 @dataclass(frozen=True)
 class ModelProfile:
@@ -27,6 +32,9 @@ class ModelProfile:
     version: int = 1
 
     def __post_init__(self):
+        object.__setattr__(self, "capabilities", frozenset(self.capabilities))
+        if self.version != 1:
+            raise ValueError("Unsupported model-profile version")
         if not self.profile_id or not self.worker_id or not self.model:
             raise ValueError("Worker/model/profile identity is required")
         if self.context_capacity <= 0 or not 0 < self.reserved_completion < self.context_capacity or self.max_tool_result_bytes < 256:
