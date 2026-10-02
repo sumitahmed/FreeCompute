@@ -60,6 +60,7 @@ class InferenceBroker:
         with self.store.transaction() as db:
             lease, reason, quarantined = self.scheduler.claim(db, job["id"])
             if lease:
+                engine = self.registry.engine(lease["worker_id"])
                 attempt_id = identity()
                 db.execute("INSERT INTO inference_attempts(id,task_id,version,profile_id,context_epoch,state,request_hash,started_at) VALUES(?,?,1,?,?,'active',?,?)",
                            (attempt_id, task["id"], profile.profile_id, task["context_epoch"], fingerprint(request), timestamp()))
@@ -81,7 +82,7 @@ class InferenceBroker:
             self.publish(event)
         if not lease:
             raise (AllocationUnavailable if quarantined else QueueWaiting)(reason)
-        return attempt_id, lease, self.registry.engine(lease["worker_id"])
+        return attempt_id, lease, engine
 
     def _finish(self, task, attempt_id, lease, response, usage, ttft_ms, remote_finished):
         saved = persistent_response(response)

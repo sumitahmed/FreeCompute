@@ -27,6 +27,13 @@ class RemoteBrainUnavailableError(Exception):
     pass
 
 
+def _interrupt_response(response):
+    try:
+        response.fp.raw._sock.shutdown(socket.SHUT_RDWR)
+    except (AttributeError, OSError):
+        pass
+
+
 class CancellationToken:
     def __init__(self):
         self._requested = threading.Event()
@@ -41,10 +48,7 @@ class CancellationToken:
 
     def attach_response(self, response):
         def interrupt():
-            try:
-                response.fp.raw._sock.shutdown(socket.SHUT_RDWR)
-            except (AttributeError, OSError):
-                pass
+            _interrupt_response(response)
         self._interrupt = interrupt
         if self.is_cancelled:
             interrupt()
@@ -160,19 +164,26 @@ class KaggleBrainClient:
         start_time = time.monotonic()
         first_token_received = False
         text_redactor, reasoning_redactor = StreamRedactor(), StreamRedactor()
+        deadline_timer, timed_out = None, threading.Event()
         if cancellation_token and cancellation_token.is_cancelled:
             cancellation_token.local_stop_confirmed = True
             return
 
         try:
             with urllib.request.build_opener(_NoRedirect()).open(req, timeout=self.timeout_seconds) as resp:
+                def expire():
+                    timed_out.set()
+                    _interrupt_response(resp)
+                deadline_timer = threading.Timer(max(0.001, self.timeout_seconds - (time.monotonic() - start_time)), expire)
+                deadline_timer.daemon = True
+                deadline_timer.start()
                 if cancellation_token:
                     cancellation_token.attach_response(resp)
                 completed = False
                 for raw_line in iter(lambda: resp.readline(1024 * 1024 + 1), b""):
                     if len(raw_line) > 1024 * 1024:
                         raise ValueError("Inference SSE line exceeded its byte limit")
-                    if time.monotonic() - start_time > self.timeout_seconds:
+                    if timed_out.is_set() or time.monotonic() - start_time > self.timeout_seconds:
                         raise TimeoutError("Inference exceeded its configured request deadline")
                     if cancellation_token and cancellation_token.is_cancelled:
                         break
@@ -224,9 +235,12 @@ class KaggleBrainClient:
         except Exception as exc:
             if cancellation_token and cancellation_token.is_cancelled:
                 return
-            raise RemoteBrainUnavailableError(scrubber.scrub(f"Connection stream failed: {exc}"))
+            detail = "Inference request timed out; remote completion is unconfirmed" if timed_out.is_set() else f"Connection stream failed: {exc}"
+            raise RemoteBrainUnavailableError(scrubber.scrub(detail))
 
         finally:
+            if deadline_timer:
+                deadline_timer.cancel()
             if cancellation_token:
                 cancellation_token._interrupt = None
                 cancellation_token.local_stop_confirmed = cancellation_token.is_cancelled

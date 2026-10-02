@@ -1,10 +1,10 @@
 """Local composition of configured adapters; no credentials enter durable descriptors."""
 import os
 
-from harness.core.client import KaggleBrainClient
 from harness.core.engines import ComfyUIEngine, LlamaCppEngine, OpenAICompatibleEngine
 from harness.core.runtime_models import ModelProfile, Worker
 from harness.providers.comfyui import ComfyUIProvider
+from harness.providers.llamacpp import LlamaCppProvider
 from harness.providers.openai_compatible import OpenAICompatibleProvider
 from harness.security import scrubber
 from harness.storage.runtime import fingerprint
@@ -32,7 +32,7 @@ def configured_engines(config, workspace):
         scrubber.register_secret(key)
         scrubber.register_secret(connection.url)
         if connection.engine == "llama.cpp":
-            adapter = LlamaCppEngine(KaggleBrainClient(connection.url, key, models[0].model, connection.timeout_seconds))
+            adapter = LlamaCppEngine(LlamaCppProvider(connection.url, key, models[0].model, connection.timeout_seconds).client)
         elif connection.engine == "openai-compatible":
             adapter = OpenAICompatibleEngine(OpenAICompatibleProvider(connection.url, key, models[0].model, connection.timeout_seconds,
                                                                      code_tools="code_tools" in capabilities))
@@ -49,7 +49,7 @@ def configured_engines(config, workspace):
                                "supervisor-text", config.model_alias, config.engine, capabilities, config.max_context_tokens,
                                min(2048, max(1, config.max_context_tokens // 4)))
         profiles[profile.profile_id] = profile
-        adapter = (LlamaCppEngine(KaggleBrainClient(config.remote_url, config.api_key, config.model_alias, config.request_timeout_seconds))
+        adapter = (LlamaCppEngine(LlamaCppProvider(config.remote_url, config.api_key, config.model_alias, config.request_timeout_seconds).client)
                    if config.engine == "llama.cpp" else OpenAICompatibleEngine(OpenAICompatibleProvider(config.remote_url, config.api_key, config.model_alias, config.request_timeout_seconds)))
         worker = Worker("supervisor-text", "remote-supervisor", config.engine, capabilities,
                         resource_pool="attached-default", resources=frozenset({"inference"}))

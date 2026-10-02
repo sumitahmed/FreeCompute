@@ -96,9 +96,12 @@ def print_status_telemetry(client: Any, session_tracker: SessionTracker, quota_l
         qt = quota_ledger.get_summary()
         print("\n" + fmt.cyan("--- REMOTE RUNTIME & QUOTA TELEMETRY ---"))
         print(f"Status           : {fmt.green(h.status.upper()) if h.status == 'healthy' else fmt.red(h.status.upper())}")
-        print(f"Connected Uptime : {st['connected_uptime_formatted']}")
-        print(f"Session Age Est  : {st['container_uptime_formatted']} (source: {st['session_age_source']})")
-        print(f"12h Assumption   : {st['remaining_12h_formatted']}")
+        if "supervisorUptimeSeconds" in h.raw:
+            print(f"Connected Uptime : {st['connected_uptime_formatted']}")
+            print(f"Session Age Est  : {st['container_uptime_formatted']} (source: {st['session_age_source']})")
+            print(f"12h Assumption   : {st['remaining_12h_formatted']}")
+        else:
+            print("Worker Timers    : unavailable from this engine")
         print(f"Weekly Quota Est : {qt['estimated_remaining_hours']}h remaining (last observed: {qt['last_observed_hours']}h)")
         print(fmt.dim("Quota basis: local task wall time; verify GPU allocation/billing in the provider dashboard."))
         if h.gpus:

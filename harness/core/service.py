@@ -397,9 +397,11 @@ class CoreService:
             self.cancellation_token.cancel()
             return
         if task_id == self._running_task_id:
-            self.cancellation_token.cancel()
             with self.store.transaction() as db:
                 task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+                if task["state"] in TERMINAL:
+                    return
+                self.cancellation_token.cancel()
                 state = NativeState.recover(task["driver"])
                 if task["state"] == "cancel_requested" and state.cancellation_requested:
                     return
@@ -487,7 +489,7 @@ class CoreService:
             from harness.core.models import RemoteHealth
             observation = next(w for w in self.list_workers() if w["worker_id"] == worker_id)
             health = RemoteHealth(observation["health"], 0, 0, 0, 0, raw=observation["observed_resources"])
-        if self.session_tracker:
+        if self.session_tracker and "supervisorUptimeSeconds" in health.raw:
             self.session_tracker.update_from_remote_health(health.raw)
         with self.store.transaction() as db:
             db.execute("INSERT OR REPLACE INTO metadata VALUES('worker_observation',?)", (encode({"status": health.status, "resources": health.raw,
