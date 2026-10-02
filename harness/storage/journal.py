@@ -4,6 +4,7 @@ Stores an append-only JSONL log of every event, tool call, approval, and task ch
 Enables task resumption after disconnection or Kaggle session restart.
 """
 
+from harness.security import scrubber
 import json
 import os
 import time
@@ -27,7 +28,7 @@ class TaskJournal:
             "runId": run_id,
             "timestampUtc": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
-            "payload": payload,
+            "payload": scrubber.structured(payload),
         }
         with open(self.journal_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -39,7 +40,7 @@ class TaskJournal:
         checkpoints[run_id] = {
             "runId": run_id,
             "updatedAtUtc": datetime.now(timezone.utc).isoformat(),
-            "state": state,
+            "state": scrubber.structured(state),
         }
         with open(self.checkpoints_file, "w", encoding="utf-8") as f:
             json.dump(checkpoints, f, indent=2, ensure_ascii=False)

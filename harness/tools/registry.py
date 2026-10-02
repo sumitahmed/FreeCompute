@@ -6,6 +6,10 @@ and defines which operations require human approval gates.
 
 from typing import Dict, Any, Callable, List, Optional
 from harness.tools import fs, terminal, web
+from harness.tools.sandbox import validate_workspace_path
+from harness.security import scrubber
+from harness.storage.undo import file_hash
+import copy
 
 
 class ToolDefinition:
@@ -15,7 +19,7 @@ class ToolDefinition:
         description: str,
         parameters: Dict[str, Any],
         handler: Callable[..., Any],
-        requires_approval: bool = False,
+        requires_approval: bool = True,
     ):
         self.name = name
         self.description = description
@@ -51,19 +55,17 @@ class ToolRegistry:
         self.tools[tool_def.name] = tool_def
 
     def _handle_write_file(self, path: str, content: str, overwrite: bool = False) -> Dict[str, Any]:
-        if self.undo_manager:
-            self.undo_manager.snapshot_pre_change(path)
+        snapshot = self.undo_manager.record_pre_change(path) if self.undo_manager else None
         res = fs.write_file(path, content, overwrite, workspace_root=self.workspace_root)
-        if self.undo_manager:
-            self.undo_manager.record_post_change(path)
+        if snapshot:
+            self.undo_manager.record_post_change(snapshot, res.get("diff", ""))
         return res
 
     def _handle_edit_file(self, path: str, old_str: str, new_str: str) -> Dict[str, Any]:
-        if self.undo_manager:
-            self.undo_manager.snapshot_pre_change(path)
+        snapshot = self.undo_manager.record_pre_change(path) if self.undo_manager else None
         res = fs.edit_file(path, old_str, new_str, workspace_root=self.workspace_root)
-        if self.undo_manager:
-            self.undo_manager.record_post_change(path)
+        if snapshot:
+            self.undo_manager.record_post_change(snapshot, res.get("diff", ""))
         return res
 
     def _register_default_tools(self):
@@ -256,26 +258,62 @@ class ToolRegistry:
 
     def is_approval_required(self, tool_name: str) -> bool:
         tool = self.tools.get(tool_name)
-        return tool.requires_approval if tool else True
+        return tool_name in {"write_file", "edit_file", "run_command"} or tool.requires_approval if tool else True
 
-    def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a tool by name with arguments dict."""
+    def execute(self, tool_name, arguments, *, approval_callback=None, cancellation_token=None):
+        """The authoritative gate, shared by interactive and headless callers."""
         tool = self.tools.get(tool_name)
         if not tool:
-            return {"error": f"Unknown tool: '{tool_name}'"}
-
-        # Validate required arguments to prevent TypeError in lambdas
-        required = tool.parameters.get("required", [])
-        missing = [param for param in required if param not in arguments or arguments[param] is None]
-        if missing:
-            expected = list(tool.parameters.get("properties", {}).keys())
-            return {
-                "error": f"Tool '{tool_name}' missing required argument(s): {', '.join(missing)}. "
-                         f"Available parameters: {expected}. "
-                         f"Please re-invoke with valid arguments."
-            }
-
+            return {"error": "Unknown tool"}
         try:
-            return tool.handler(**arguments)
+            if not isinstance(arguments, dict):
+                raise ValueError("Arguments must be an object")
+            arguments = copy.deepcopy(arguments)
+            properties = tool.parameters.get("properties", {})
+            if set(arguments) - set(properties):
+                raise ValueError("Unknown tool argument")
+            if any(k not in arguments for k in tool.parameters.get("required", [])):
+                raise ValueError("Missing required argument")
+            types = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
+            for name, value in arguments.items():
+                expected = types.get(properties[name].get("type"))
+                if expected and (not isinstance(value, expected) or expected is int and isinstance(value, bool)):
+                    raise ValueError("Invalid argument type")
+            target = None
+            before = None
+            if tool_name in {"write_file", "edit_file"}:
+                target = validate_workspace_path(arguments["path"], self.workspace_root, True)
+                before = file_hash(target)
+            if cancellation_token and cancellation_token.is_cancelled:
+                return {"status": "rejected", "message": "Cancellation requested"}
+            if self.is_approval_required(tool_name):
+                if approval_callback is None or approval_callback(tool_name, scrubber.structured(arguments)) is not True:
+                    return {"status": "rejected", "message": "Explicit approval required"}
+            if cancellation_token and cancellation_token.is_cancelled:
+                return {"status": "rejected", "message": "Cancellation requested"}
+            if target:
+                validate_workspace_path(arguments["path"], self.workspace_root, True)
+                if file_hash(target) != before:
+                    raise ValueError("File changed during approval")
+            return scrubber.structured(tool.handler(**arguments))
         except Exception as exc:
-            return {"error": f"Tool execution failed: {type(exc).__name__}: {str(exc)}"}
+            return {"error": scrubber.scrub(f"Tool execution failed: {type(exc).__name__}: {exc}")}
+
+
+class ToolBroker:
+    """Capability view over the existing registry; children can only narrow it."""
+    def __init__(self, registry, allowed_tools=None):
+        self._registry = registry
+        self.allowed_tools = frozenset(registry.tools if allowed_tools is None else allowed_tools)
+        if not self.allowed_tools <= registry.tools.keys():
+            raise ValueError("Unknown capability")
+
+    def child(self, allowed_tools):
+        if not set(allowed_tools) <= self.allowed_tools:
+            raise ValueError("Child permissions cannot widen")
+        return ToolBroker(self._registry, allowed_tools)
+
+    def execute(self, name, arguments, **authority):
+        if name not in self.allowed_tools:
+            return {"status": "rejected", "message": "Tool outside permitted capabilities"}
+        return self._registry.execute(name, arguments, **authority)
