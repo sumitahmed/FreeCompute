@@ -36,6 +36,12 @@ Context counts are labeled UTF-8 estimates; advanced compaction and verified
 tokenizers/profile manifests are later work. Process restart tests are not
 power-loss durability certification. No real GPU session was used.
 
+Bounded Stage 3 acceptance passed 140 unit tests and the fresh installed CLI's
+edit/test, restart/resume and undo-denial workflow. The exact 28-file phase
+inventory and remaining release/worker limits are recorded in
+[STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md#files-in-this-phase). Further
+stages require separate review and authorization.
+
 ## Shape: modular local core, optional daemon
 
 Start with one local Python process and explicit module boundaries. An in-process API supports CLI and tests. Later an authenticated local service exposes the same commands and events to GUI, SDK and automation. Avoid microservices, Redis, an external queue, or a vector database for the first release. Remote services perform inference only.

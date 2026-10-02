@@ -61,6 +61,13 @@ def handle_approval_prompt(tool_name: str, args: Dict[str, Any], fmt: TerminalFo
         cwd = args.get("cwd", ".")
         print(f"Command : {fmt.bold(cmd)}")
         print(f"Dir     : {fmt.dim(cwd)}")
+    elif tool_name in {"restore_snapshot", "restore_legacy_snapshot"}:
+        print(f"Target  : {fmt.bold(args.get('path', ''))}")
+        print(f"Action  : {args.get('operation', 'Restore snapshot')}")
+        print(f"Current : {args.get('expected_current_hash')}")
+        print(f"Original: {args.get('pre_hash') or 'File was absent'}")
+        for line in args.get("diff", "").splitlines()[:10]:
+            print(fmt.dim(line))
     else:
         print(f"Tool: {tool_name} with arguments: {args}")
 

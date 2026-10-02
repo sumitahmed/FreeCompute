@@ -434,6 +434,42 @@ class LocalRuntimeTests(unittest.TestCase):
             core._run_lock.release()
         self.assertEqual(provider.calls, 1)
 
+    def test_restore_approval_preview_identifies_target_and_deletion(self):
+        core = self.start(tool_reply([("new", "write_file", {"path": "new.txt", "content": "one"})]), text_reply())
+        core.run(core.submit("write"), approval_resolver=lambda *_: True)
+        previews = []
+        result = core.undo_last(approval_callback=lambda name, args: previews.append(args) or False)
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(previews[0]["path"], "new.txt")
+        self.assertEqual(previews[0]["operation"], "delete file created by the task")
+        self.assertIsNone(previews[0]["pre_hash"])
+        self.assertTrue(previews[0]["expected_current_hash"])
+        self.assertTrue((self.workspace / "new.txt").is_file())
+
+    def test_unscrubbed_legacy_restore_metadata_is_redacted_at_approval_sink(self):
+        from harness.storage.undo import UndoManager
+        target = self.workspace / "old.txt"
+        target.write_text("old")
+        manager = UndoManager(str(self.workspace), str(self.base / "legacy"))
+        snapshot = manager.record_pre_change("old.txt")
+        target.write_text("new")
+        manager.record_post_change(snapshot)
+        secret = "LEGACY_SYNTHETIC_PREVIEW_CREDENTIAL_ABCDE"
+        scrubber.register_secret(secret)
+        data = json.loads(manager.history_file.read_text())
+        data[-1]["diff"] = secret  # Simulate a historical, unsanitized user ledger.
+        manager.history_file.write_text(json.dumps(data), encoding="utf-8")
+        manager = UndoManager(str(self.workspace), str(self.base / "legacy"))
+        original = manager.history_file.read_bytes()
+        core = self.start()
+        core.attach_legacy_undo(manager)
+        previews = []
+        result = core.undo_last(approval_callback=lambda n, a: previews.append(a) or False)
+        self.assertEqual(result["status"], "rejected")
+        self.assertNotIn(secret, json.dumps(previews))
+        self.assertEqual(manager.history_file.read_bytes(), original)
+        self.assertEqual(target.read_text(), "new")
+
 
 if __name__ == "__main__":
     unittest.main()

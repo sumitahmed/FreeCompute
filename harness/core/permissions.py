@@ -9,7 +9,7 @@ class PermissionService:
         self.store = store
         self.publish = publish
 
-    def request(self, action, target_hash):
+    def request(self, action, target_hash, preview=None):
         with self.store.transaction() as db:
             db.execute("UPDATE actions SET state='awaiting_approval',revision=revision+1 WHERE id=?", (action["id"],))
             current = db.execute("SELECT * FROM actions WHERE id=?", (action["id"],)).fetchone()
@@ -23,7 +23,7 @@ class PermissionService:
                 action["fingerprint"], target_hash, timestamp()))
             event = self.store.event(db, task["session_id"], task["id"], "approval.requested",
                                     {"approval_id": approval_id, "action_id": action["id"], "tool": action["name"],
-                                     "arguments": json.loads(action["arguments"]), "target_hash": target_hash},
+                                     "arguments": preview if preview is not None else json.loads(action["arguments"]), "target_hash": target_hash},
                                     entity_id=approval_id, revision=current["revision"])
             self.store.checkpoint(db, task["id"])
         self.publish(event)

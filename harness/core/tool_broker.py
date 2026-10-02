@@ -159,8 +159,14 @@ class DurableToolBroker:
                 return self._receipt(action, {"status": "rejected", "message": scrubber.scrub(exc)}, "denied")
 
             def gate(name, preview):
+                if name in {"restore_snapshot", "restore_legacy_snapshot"}:
+                    saved = self.artifacts.snapshot(arguments["snapshot_id"]) if name == "restore_snapshot" else self.legacy_undo.snapshots[-1].to_dict()
+                    preview = dict(preview, path=str(target.relative_to(self.store.workspace)),
+                                   operation="restore original content" if saved["pre_hash"] is not None else "delete file created by the task",
+                                   pre_hash=saved["pre_hash"], expected_current_hash=before, diff=saved.get("diff", ""))
+                preview = scrubber.structured(preview)
                 self.fault("before_approval", action)
-                approval = self.permissions.request(action, before)
+                approval = self.permissions.request(action, before, preview)
                 decision = False
                 try:
                     decision = resolver(name, preview) is True if resolver else False

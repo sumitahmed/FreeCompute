@@ -2,15 +2,15 @@
 
 ## Scope and implementation record
 
-2026-10-02: authorized after native-driver qualification. Planned production
+2026-10-02: authorized after native-driver qualification. The implemented
 composition is one local CoreService with a task/session manager, proposal-only
 driver, inference/tool brokers, permission service, ordered events, SQLite
-checkpoints and private artifact references. The CLI will consume core state and
+checkpoints and private artifact references. The CLI consumes core state and
 events. This is a new production boundary, not adoption of the experiment store.
 
-The database will live in per-user local application data, keyed by canonical
+The database lives in per-user local application data, keyed by canonical
 workspace identity, outside the repository/OneDrive. A workspace ownership lock
-will reject concurrent cores. Legacy JSON journals and undo data will remain
+rejects concurrent cores. Legacy JSON journals and undo data remain
 readable and untouched; no destructive or implicit import is authorized.
 
 Durability must distinguish completed receipts from uncertain effects. A crash
@@ -36,8 +36,9 @@ SQLite and external effects cannot provide exactly-once execution.
 - Skills now validate manifests, use protected reads, repair missing APIs and
   distinguish absent tool restrictions from an explicit empty list. Enforcement
   is in the production core, including narrowing after `read_skill`.
-- Restart regressions, CLI integration, package checks and final security review
-  remain pending. The smoke is not full Stage 3 acceptance.
+- Bounded Stage 3 acceptance is complete: 140 unit tests, separate process/CLI
+  recovery fixtures, installed-wheel verification and the sequential adversarial
+  review below. Stop for branch review; this does not authorize Stage 4 or a release.
 
 ## Production contracts and authoritative state
 
@@ -95,7 +96,9 @@ The workspace write uses the existing atomic replacement/guard. Receipt,
 post-hash, snapshot seal, event and checkpoint are committed together. Restore
 validates the snapshot/backup/conflict before intent and checks again at the
 actual restore; missing or corrupt backups cannot authorize deletion. Undo is
-another core-owned task/action and requires a fresh approval.
+another core-owned task/action and requires a fresh approval. Its sanitized
+preview identifies the target, restore-or-delete operation, current/original
+hashes and recorded diff, including redaction of historical legacy metadata.
 
 Restart reconstructs driver state, history, pending action identities, attempts,
 approvals and receipts. Grants interrupted before intent expire and require a
@@ -166,14 +169,14 @@ workflow/delegation/cron implementation hidden inside the skill manager.
 
 ## Verification and adversarial findings
 
-- Full unit run before final packaging: **138 passed in 25.064 seconds**, including
-  all 94 previous tests unchanged. Production regressions cover 24 local-runtime,
+- Final full unit run: **140 passed in 22.777 seconds**, including
+  all 94 previous tests unchanged. Production regressions cover 26 local-runtime,
   six native-driver, three CLI/presentation and 11 process/ownership tests.
 - Historical SDK suites rerun: **15 passed in 9.806 seconds** (one deliberately
   blocked tokenizer metadata connection); **28 passed in 146.575 seconds** with
   zero external connection attempts. Their optional fixture environment and
   rejection evidence are preserved; these are not production SDK adoption tests.
-- Scanner: 138 repository files checked, zero configured secret patterns.
+- Earlier scanner: 138 repository files checked, zero configured secret patterns.
   `git diff --check` passed. Scanner success is not a complete DLP/release proof.
 - Actual CLI fixture: approved write + real Python verification command; second
   process `/resume` issued no new model request and left action receipts unchanged.
@@ -184,10 +187,38 @@ workflow/delegation/cron implementation hidden inside the skill manager.
   separate held-owner process refused a second core.
 - Adversarial review found and fixed: restore validation after intent; denial
   receipt crash window; reentrant callback overwriting authority; false success
-  rendering for denial; missing stream byte bound and hidden invalid-manifest
-  diagnostics. Their focused regressions passed.
-- Fresh wheel/source byte comparison, installed entry point, final whole-suite
-  run, Git scope/remote checks and final checkpoint: pending below.
+  rendering for denial; missing stream byte bound, hidden invalid-manifest
+  diagnostics and an opaque undo approval preview. The enriched preview also
+  scrubs historical legacy metadata at the approval sink. Regressions passed.
+- Fresh Python 3.12.10 wheel: all **44** packaged `harness` Python files matched
+  the source snapshot, current repository and target install byte-for-byte.
+  All **36** default modules imported from that install without loading or
+  requiring the optional SDK. The opt-in adapter was separately imported with
+  the pinned SDK environment and zero external connection attempts.
+- Actual installed `freecompute.exe`, run outside the repository: help, approved
+  file write and real Python assertion command passed. A second process resumed
+  with no additional chat requests and unchanged completed receipts, then showed
+  the undo target/deletion preview; denying it preserved the file. Totals: two
+  chat requests, two completed tool receipts and one denied undo receipt. SQLite
+  integrity passed. This used only an authenticated loopback fixture, not a GPU.
+- Package report: `fc-stage3-final-package-s32cz9ks/report.json` in the local
+  temporary directory. Unit log: `fc-stage3-final-unit-acceptance.log` there.
+  These machine-local artifacts are not committed or published.
+
+## Files in this phase
+
+The cumulative change from preserved Stage 2 checkpoint `e869f1f` is exactly
+28 files. The existing unit tests, `kaggle/`, historical SDK fixtures and
+`harness/experiments/` are unchanged in this phase. Existing automatic checkpoint
+history is preserved; no reset, squash or main-branch modification is needed.
+
+| Group | Included paths |
+| --- | --- |
+| CLI (3) | `harness/cli/core_client.py`, `harness/cli/formatter.py`, `harness/cli/main.py` |
+| Core (9) | `harness/core/context.py`, `inference.py`, `native_driver.py`, `permissions.py`, `prompt.py`, `runtime_models.py`, `service.py`, `sessions.py`, `tool_broker.py` |
+| Skills/storage/tools (4) | `harness/skills/manager.py`, `harness/storage/artifacts.py`, `harness/storage/runtime.py`, `harness/tools/registry.py` |
+| Tests/fixture documentation (6) | `tests/runtime/crash_worker.py`, `tests/runtime/README.md`, `tests/unit/test_local_runtime.py`, `test_native_driver.py`, `test_runtime_cli.py`, `test_runtime_recovery.py` |
+| Knowledge base (6) | `knowledgebase/CUSTOM_DRIVER_QUALIFICATION.md`, `FOUNDATION_DECISION.md`, `README.md`, `STAGE3_LOCAL_RUNTIME.md`, `V2_ROADMAP.md`, `V2_SYSTEM_ARCHITECTURE.md` |
 
 ## Remaining debt and next gate
 

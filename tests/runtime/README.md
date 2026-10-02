@@ -26,7 +26,8 @@ Fixtures do not start Kaggle/Colab, load model weights or create remote workers.
 Reported token usage in the CLI supervisor is synthetic fixture data. Assertions
 about crash recovery concern process exit, not filesystem/SQLite durability
 under power loss. The historical optional SDK suites remain separately
-documented in `tests/spike/README.md` and `tests/foundation/README.md`.
+documented in `knowledgebase/OPENHANDS_COMPATIBILITY_SPIKE.md` and
+`tests/foundation/README.md`.
 
 Package acceptance uses a fresh source snapshot outside the repository,
 `python -m pip wheel --no-deps`, a separate target install, byte comparison of

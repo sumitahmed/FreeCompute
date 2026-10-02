@@ -28,7 +28,7 @@ this driver is accepted as the Stage 3 foundation.
 Observed starting integration gaps: the CLI owned conversation state and constructed
 providers/tools directly. Skill `allowed_tools` was parsed but unenforced; the
 registry/prompt builder also refer to missing skill-manager methods. These are
-Stage 3 repair targets are now corrected in the production boundary.
+Stage 3 repair targets now corrected in the production boundary.
 
 The optional OpenHands adapter remains an isolated historical experiment. It
 will not be renamed into production or made a mandatory dependency.
@@ -47,11 +47,16 @@ will not be renamed into production or made a mandatory dependency.
 - Production fixtures now prove actual edit/test receipts, missing/false
   approvals, immutable snapshot conflict checks, ordered events/checkpoints,
   scope narrowing, one active allocation, and recovery in separate processes.
-  The focused runtime group passed **50 tests**, including 11 process/ownership
-  tests and three actual CLI/presentation tests. The full unit suite and packaged
-  entry point are being checked next. The experiment is not substituted for this
-  evidence.
+  Final acceptance passed **140 unit tests**: 94 prior regressions unchanged,
+  six native-driver, 26 local-runtime, three CLI/presentation and 11
+  process/ownership tests. A fresh wheel matched all 44 source Python files;
+  its installed entry point passed edit/test, separate-process resume without
+  repeating requests/effects, and explicit undo preview/denial. The default
+  install imported 36 modules without loading or requiring the optional SDK.
+  See [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md) for exact evidence and
+  limitations. Stop for review before further stages.
 - Initial implementation failures found and fixed: restore validation happened
   after execution intent; denial had a crash window before its receipt; a
   reentrant callback could overwrite action state; the old formatter printed
-  denial as success. Focused regressions cover the corrections.
+  denial as success; undo previews hid the target/operation and needed to scrub
+  historical metadata. Regressions cover the corrections.

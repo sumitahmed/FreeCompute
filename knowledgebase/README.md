@@ -2,7 +2,7 @@
 
 Research date: **2026-10-02**. Audited baseline: `main`, `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`.
 
-**Current status:** Stage 1 safety repairs are preserved; the completed pinned OpenHands experiment is **REJECTED** as the general foundation. The subsequently authorized native driver qualified and the Stage 3 local runtime is implemented under final acceptance. See the records below. Broader scheduling/delegation, GUI, daemon and real GPU/deployment work remain proposed.
+**Current status:** Stage 1 safety repairs are preserved; the completed pinned OpenHands experiment is **REJECTED** as the general foundation. The subsequently authorized native driver qualified and the bounded Stage 3 local runtime passed 140 unit tests and installed-wheel acceptance. Work stops for branch review. See the records below for evidence and limits. Broader scheduling/delegation, GUI, daemon and real GPU/deployment work remain proposed.
 
 Read these in order:
 
