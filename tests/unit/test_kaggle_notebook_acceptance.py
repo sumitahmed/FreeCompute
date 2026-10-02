@@ -12,6 +12,7 @@ import tempfile
 import types
 import unittest
 import urllib.request
+import zipfile
 from unittest.mock import Mock, patch
 
 
@@ -73,92 +74,117 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
             state['print'](self.tailkey)
         self.assertNotIn(self.tailkey, self.output.getvalue())
 
-    def engine_archives(self, unsafe=False):
-        archives = []
-        contents = [
-            {'llama-b11206/llama-server': b'fixture binary',
-             'llama-b11206/libggml-cuda.so': b'fixture backend'},
-            {f'cudart-llama-b11206-bin-ubuntu-cuda-12.8-x64/{name}': b'fixture CUDA library'
-             for name in ('libcudart.so.12', 'libcublas.so.12', 'libcublasLt.so.12')},
-        ]
-        if unsafe:
-            contents[0]['../../outside-engine'] = b'unsafe'
-        for files in contents:
-            buffer = io.BytesIO()
-            with tarfile.open(fileobj=buffer, mode='w:gz') as bundle:
-                for name, data in files.items():
-                    info = tarfile.TarInfo(name)
-                    info.size, info.mode = len(data), 0o755
-                    bundle.addfile(info, io.BytesIO(data))
-            archives.append(buffer.getvalue())
+    def engine_archive(self, unsafe=False, bad_manifest=False, extra_zip_file=False):
+        tar_buffer = io.BytesIO()
+        with tarfile.open(fileobj=tar_buffer, mode='w:gz') as bundle:
+            root = tarfile.TarInfo('engine')
+            root.type = tarfile.DIRTYPE
+            bundle.addfile(root)
+            names = ['engine/llama-server', 'engine/libggml-cuda.so',
+                     'engine/libcudart.so.12', 'engine/libcublas.so.12', 'engine/libcublasLt.so.12']
+            if unsafe:
+                names.append('engine/../../outside-engine')
+            for name in names:
+                data = b'fixture engine content'
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(data), 0o755
+                bundle.addfile(info, io.BytesIO(data))
+        tar_data = tar_buffer.getvalue()
+        tar_digest = hashlib.sha256(tar_data).hexdigest()
+        tar_name = 'kaggle-llama-b11206-sm75-ubuntu22.tar.gz'
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as bundle:
+            bundle.writestr(tar_name, tar_data)
+            manifest_digest = '0' * 64 if bad_manifest else tar_digest
+            bundle.writestr('engine.sha256', manifest_digest + '  ' + tar_name + '\n')
+            if extra_zip_file:
+                bundle.writestr('../outside-engine', b'unsafe')
+        zip_data = zip_buffer.getvalue()
         code = self.cells[4]
-        for production_digest, data in zip((
-                'fa78d7d80b8dca117638c49fc4aa58d6b01407541804483876c27323ebb887de',
-                'bcc52b864ad3edbdd18d10d8061bb84af2c085c50621d0cc19e135130cc360e8'), archives):
-            self.assertIn(production_digest, code)
-            code = code.replace(production_digest, hashlib.sha256(data).hexdigest())
-        return code, archives
+        pins = {n.targets[0].id: n.value.value for n in ast.parse(code).body
+                if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                and isinstance(n.value, ast.Constant)}
+        for name, digest in (('ARTIFACT_ZIP_SHA256', hashlib.sha256(zip_data).hexdigest()),
+                             ('ENGINE_TAR_SHA256', tar_digest)):
+            self.assertRegex(pins[name], r'^[0-9a-f]{64}$')
+            code = code.replace(f"{name} = '{pins[name]}'", f"{name} = '{digest}'")
+        return code, zip_data
 
     def test_download_verifies_archives_libraries_pin_and_both_gpus(self):
         state = self.configuration()
-        code, archives = self.engine_archives()
+        code, archive = self.engine_archive()
         with tempfile.TemporaryDirectory() as directory:
             state.update(SCRATCH=Path(directory), SERVER_BIN=None)
             responses = [types.SimpleNamespace(returncode=0, stdout=text, stderr='') for text in (
-                'version: 11206 (2b129ccfa)', 'CUDA0: Tesla T4\nCUDA1: Tesla T4')]
-            with patch.object(urllib.request, 'urlopen', side_effect=[io.BytesIO(a) for a in archives]) as download, \
+                'version: 0.5.0-dev (build 1, commit 2b129cc)', 'CUDA0: Tesla T4\nCUDA1: Tesla T4')]
+            with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(archive)) as download, \
                  patch.object(subprocess, 'run', side_effect=responses * 2) as run, \
-                 patch.dict('os.environ'), \
-                 contextlib.redirect_stdout(self.output):
+                 patch('platform.libc_ver', return_value=('glibc', '2.35')), \
+                 patch.dict('os.environ'), contextlib.redirect_stdout(self.output):
                 exec(code, state)
-                exec(code, state)  # Verified cache avoids repeat downloads.
-            self.assertEqual(download.call_count, 2)
-            for call in download.call_args_list:
-                self.assertIn('/releases/download/b11206/', call.args[0].full_url)
-                self.assertIn('cuda-12.8-x64.tar.gz', call.args[0].full_url)
+                exec(code, state)
+            download.assert_called_once()
+            self.assertIn('/FreeCompute/actions/artifacts/', download.call_args.args[0].full_url)
+            self.assertIn(str(state['ARTIFACT_ID']) + '.zip', download.call_args.args[0].full_url)
+            self.assertNotIn('Authorization', download.call_args.args[0].headers)
             self.assertEqual([c.args[0][-1] for c in run.call_args_list],
                              ['--version', '--list-devices'] * 2)
             self.assertTrue((state['SERVER_BIN'].parent / 'libcublas.so.12').is_file())
             self.assertEqual(state['ENGINE_PROVENANCE']['commit'], state['CONFIG']['LLAMA_COMMIT'])
+            self.assertIn('GGML_CUDA_NO_VMM=ON', state['ENGINE_PROVENANCE']['build_flags'])
 
     def test_download_rejects_corrupt_archive_before_extraction_or_execution(self):
         state = self.configuration()
-        code, archives = self.engine_archives()
+        code, archive = self.engine_archive()
         with tempfile.TemporaryDirectory() as directory:
             state['SCRATCH'] = Path(directory)
             with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(b'corrupt')), \
                  patch.object(subprocess, 'run') as run, contextlib.redirect_stdout(self.output):
-                with self.assertRaisesRegex(RuntimeError, 'SHA256 mismatch'):
+                with self.assertRaisesRegex(RuntimeError, 'ZIP SHA256 mismatch'):
                     exec(code, state)
             run.assert_not_called()
-            self.assertFalse((state['ENGINE_DIR'] / 'llama-b11206').exists())
+            self.assertFalse((state['ENGINE_DIR'] / 'engine').exists())
 
     def test_download_rejects_tar_path_traversal(self):
         state = self.configuration()
-        code, archives = self.engine_archives(unsafe=True)
+        code, archive = self.engine_archive(unsafe=True)
         with tempfile.TemporaryDirectory() as directory:
             state['SCRATCH'] = Path(directory)
-            with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(archives[0])), \
+            with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(archive)), \
                  patch.object(subprocess, 'run') as run, contextlib.redirect_stdout(self.output):
                 with self.assertRaises(tarfile.FilterError):
                     exec(code, state)
             run.assert_not_called()
             self.assertFalse((Path(directory).parent / 'outside-engine').exists())
-            self.assertFalse((state['ENGINE_DIR'] / 'llama-b11206').exists())
+            self.assertFalse((state['ENGINE_DIR'] / 'engine').exists())
+
+    def test_download_rejects_unexpected_zip_paths_and_bad_checksum_manifest(self):
+        for kwargs, message in (({'extra_zip_file': True}, 'unexpected contents'),
+                                ({'bad_manifest': True}, 'manifest')):
+            with self.subTest(kwargs=kwargs), tempfile.TemporaryDirectory() as directory:
+                state = self.configuration()
+                state['SCRATCH'] = Path(directory)
+                code, archive = self.engine_archive(**kwargs)
+                with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(archive)), \
+                     patch.object(subprocess, 'run') as run, contextlib.redirect_stdout(self.output):
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        exec(code, state)
+                run.assert_not_called()
+                self.assertFalse((state['ENGINE_DIR'] / 'engine').exists())
 
     def test_download_rejects_wrong_version_cpu_fallback_and_runtime_failure(self):
-        code, archives = self.engine_archives()
+        code, archive = self.engine_archive()
         cases = [
             ([('version: 11207 (abcdef0)', 0)], 'pinned commit'),
             ([('version: 11206 (2b129ccfa)', 0), ('CPU: fixture', 0)], 'both T4'),
-            ([('missing library ' + self.bearer, 1)], 'incompatible'),
+            ([('missing library ' + self.bearer, 1)], 'runtime check'),
         ]
         for outputs, error_text in cases:
             with self.subTest(error=error_text), tempfile.TemporaryDirectory() as directory:
                 state = self.configuration()
                 state['SCRATCH'] = Path(directory)
                 results = [types.SimpleNamespace(stdout=text, stderr='', returncode=rc) for text, rc in outputs]
-                with patch.object(urllib.request, 'urlopen', side_effect=[io.BytesIO(a) for a in archives]), \
+                with patch.object(urllib.request, 'urlopen', return_value=io.BytesIO(archive)), \
                      patch.object(subprocess, 'run', side_effect=results), patch.dict('os.environ'), \
                      contextlib.redirect_stdout(self.output):
                     with self.assertRaisesRegex(RuntimeError, error_text) as error:
@@ -168,7 +194,7 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
     def test_download_rejects_changed_pin_or_running_worker(self):
         state = self.configuration()
         state['CONFIG']['LLAMA_COMMIT'] = 'different'
-        with self.assertRaisesRegex(RuntimeError, 'configured engine pin'):
+        with self.assertRaisesRegex(RuntimeError, 'configured acceptance pin'):
             exec(self.cells[4], state)
         state['llama_proc'] = types.SimpleNamespace(poll=lambda: None)
         with self.assertRaisesRegex(RuntimeError, 'already running'):
@@ -176,12 +202,11 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
 
     def test_download_checks_glibc_before_network_use(self):
         state = self.configuration()
-        with patch('platform.libc_ver', return_value=('glibc', '2.35')), \
+        with patch('platform.libc_ver', return_value=('glibc', '2.34')), \
              patch.object(urllib.request, 'urlopen') as download:
-            with self.assertRaisesRegex(RuntimeError, 'glibc >= 2.38'):
+            with self.assertRaisesRegex(RuntimeError, 'glibc >= 2.35'):
                 exec(self.cells[4], state)
         download.assert_not_called()
-
     def test_transport_forwards_tcp_and_removes_key_file_without_exposing_it(self):
         state = self.configuration('tailscale')
         process = Mock()

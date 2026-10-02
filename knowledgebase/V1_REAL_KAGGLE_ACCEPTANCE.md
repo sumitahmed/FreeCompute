@@ -1,17 +1,17 @@
 # V1 real Kaggle acceptance
 
 2026-10-03. Preparation on `v2/safety-and-agentdriver-spike`, preserving backend
-checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. **No GPU session, tunnel,
-remote health request or real inference has been started in this preparation.**
+checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. **Agent preparation has
+started no Kaggle GPU session, tunnel, remote health request or real inference.**
 
-**Current preparation block:** the user's executable cell 4 reported Kaggle
+**Runtime correction:** the user's executable cell 4 reported Kaggle
 glibc **2.35**, while the official `b11206` CUDA archive requires **2.38**.
-That archive is incompatible with the observed runtime. Do not continue the
-old download procedure or allocate GPU time while preparing its replacement.
-A CPU-only Ubuntu 22.04 / CUDA 12.4 / SM75 build of the same pinned commit with
-`GGML_CUDA_NO_VMM=ON` is running in
-[GitHub Actions](https://github.com/sumitahmed/FreeCompute/actions/runs/37049526251).
-Its artifact has not yet been verified or integrated into cell 4.
+Cell 4 now downloads a CPU-built Ubuntu 22.04 / CUDA 12.4 / SM75 artifact of the
+same pinned commit with `GGML_CUDA_NO_VMM=ON`. Its build and version check passed in
+[GitHub Actions](https://github.com/sumitahmed/FreeCompute/actions/runs/37052624160).
+The cell checks the ZIP and tar SHA256 values before extraction, then verifies
+the commit and both T4 devices before model download. Actual Kaggle GPU execution
+of this replacement remains unverified until the user runs it.
 
 ## Observed repository and historical profile
 
@@ -34,7 +34,7 @@ attachments. No remote component executes local tools.
 | Worker / profile | `kaggle-qwen` / `kaggle-qwen-historical-64k` |
 | Location / engine | Kaggle Free dual T4 / llama.cpp |
 | Engine commit | `2b129ccfa03aea330d2d9ac4650a10de393dbe3a` |
-| Engine distribution | Official release `b11206`, Linux x64 CUDA 12.8; SHA256-pinned engine and CUDA runtime archives |
+| Engine distribution | FreeCompute CPU-built Ubuntu 22.04 / CUDA 12.4 / SM75 artifact, SHA256 pinned; matching CUDA libraries included |
 | Model repository | `huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF` |
 | Model filename | `Huihui-Qwen3.8-27B-abliterated-UD-DW-Q4_K_M.gguf` |
 | Model revision | `3f101cd22b7999228bbd5d79a33975414eb9758b` |
@@ -59,23 +59,20 @@ failure; do not silently change context, weights, template or flags.
 - Both wrappers advertised Run All despite a final cell that stopped inference.
   Instructions now require code cells 1-8 individually; shutdown requires an explicit
   `CONFIRM_SHUTDOWN = True`. Startup/configuration/transport refuse active reruns.
-- The original cold build's heading claimed a pinned engine but cloned current
-  HEAD. The initial fix pinned that checkout. At the user's request, code cell 4
-  now downloads official release `b11206`, which targets the same full commit,
-  instead of compiling. Both engine and CUDA runtime archives are SHA256 checked;
-  extraction rejects unsafe paths, and version/both-T4 probes fail before model
-  loading on a mismatch or incompatible Linux/CUDA runtime. No CPU fallback or
-  alternate engine version is selected. Default acceptance ignores arbitrary
-  dataset binaries/weights; no inputs are needed.
-  Direct archive inspection confirmed the engine SHA256 and the CUDA backend's
-  requirements: glibc 2.38 and GLIBCXX 3.4.32. Cell 4 checks glibc before network
-  use; the executable/device probes check remaining loader/driver compatibility.
-  The actual Kaggle runtime has not been observed, so compatibility is unverified.
-- The official Ubuntu CUDA 12.8 release uses upstream release build flags, which
-  do **not** enable the historical `GGML_CUDA_NO_VMM=ON`. This is a declared build
-  provenance change, not proof of identical allocation or inference behavior.
-  Model identity, context and server arguments remain unchanged. Cell 8 records
-  the release identity, archive checksums, build distinction and CUDA observations.
+- The first downloadable engine was an official CUDA 12.8 archive requiring
+  glibc 2.38 / GLIBCXX 3.4.32. The user's Kaggle runtime reported glibc 2.35,
+  so it could not load that archive. A CPU-only GitHub runner now builds the
+  historical commit on Ubuntu 22.04 using GNU 11.4 and CUDA 12.4 for SM75.
+  Code cell 4 downloads this artifact; it never builds on Kaggle or upgrades
+  Kaggle's system libraries. Both ZIP and inner tar are SHA256 pinned; extraction
+  rejects unsafe paths and the version/both-T4 probes stop on a mismatch or load
+  failure. No CPU fallback or alternate engine version is selected. No inputs
+  are needed. The first external job compiled successfully but failed packaging
+  because `find` did not follow `/usr/local/cuda`; the corrected job passed.
+- The compatible build enables the historical `GGML_CUDA_NO_VMM=ON` alongside
+  CUDA and architecture 75. It also uses Release, `GGML_NATIVE=OFF`,
+  `LLAMA_BUILD_TESTS=OFF`, and `LLAMA_CURL=OFF`. Model retrieval stays in Python.
+  Cell 8 records the build run, archive fingerprints and observed CUDA devices.
 - The user requested a Cloudflare URL as an alternative and does not want to use
   Tailscale for this run. The notebook now defaults to a Cloudflare Quick Tunnel;
   it requires only `FREECOMPUTE_API_KEY` in Kaggle Secrets. HTTP/2 does not
@@ -101,6 +98,27 @@ copies. Model/quantization/revision/context/tensor split/engine flags are unchan
 Dataset caches remain an opt-in historical convenience, not a verified acceptance
 asset source. This pass does not certify raw upstream logs or external programs.
 
+## Compatible engine artifact
+
+Build run `37052624160`, repository commit `8e3cf74`, artifact `11247636682`:
+
+- ZIP SHA256: `71487cea2572f9cd694f542b46598c612040d54c0199465eeaaef4aaff75b50a`.
+- Inner tar SHA256: `c84d19cd871094f5a3cba730680bc23e969c667c5122aa408c4b7f38989ae0c0`.
+- Download size: 445,007,258 bytes. The package includes the engine's shared
+  libraries plus `libcudart.so.12`, `libcublas.so.12`, and `libcublasLt.so.12`.
+- [The successful build](https://github.com/sumitahmed/FreeCompute/actions/runs/37052624160)
+  checked the full source SHA, compiled on Ubuntu 22.04 and ran `--version`,
+  observing `0.5.0-dev (build 1, commit 2b129cc)` / GNU 11.4.0. This CPU check
+  does not test CUDA device execution, model load or inference.
+- The ZIP digest comes from GitHub's artifact metadata and the tar digest from
+  the successful packaging log. A public GET returned the expected artifact
+  size. Local tests use fixtures; a partial local mirror download was stopped
+  rather than treated as full archive checksum or ELF inspection evidence.
+- [nightly.link](https://nightly.link/) supplies anonymous downloads of the
+  exact GitHub artifact; no GitHub key is added to Kaggle. The expected hashes
+  are fixed in cell 4. The artifact expires **2026-10-10 00:58 IST**; on expiry,
+  rebuild off GPU and update the artifact identity/checksums before acceptance.
+
 ## Manual procedure
 
 For the requested Cloudflare URL route, before allocating GPU time:
@@ -116,8 +134,8 @@ For the requested Cloudflare URL route, before allocating GPU time:
 4. Run code cells **1, 2, 3, 4, 5, 6, 7, 8**, individually, in order.
    Use the code-cell heading numbers; the introductory Markdown is not counted.
    Code cell 1 is MODEL SELECTION & RUNTIME CONFIGURATION. Stop on an error; report the redacted error.
-   Cell 4 downloads about 765 MB, retaining the release's shared libraries and
-   adding its matching CUDA runtime libraries; no compiler is needed. It must
+   Cell 4 downloads about 445 MB, including the engine's shared libraries and
+   matching CUDA runtime libraries; no compiler is needed. It must
    print `ENGINE DOWNLOAD VERIFIED; BOTH T4 GPUs DETECTED.` before continuing.
    For an already-uploaded notebook whose cells 1-3 finished successfully, paste
    the entire contents of `kaggle/download_llama_engine.py` into code cell 4.
@@ -182,13 +200,14 @@ still require their individual interactive approvals.
 
 ## Freshly tested locally
 
-- Full unit suite: **204 tests passed in 30.355s**, including fifteen notebook
+- Full unit suite: **205 tests passed in 50.284s**, including sixteen notebook
   regressions. Existing authenticated loopback CLI/engine and process recovery
   integration cases run as part of that suite.
-- Fifteen focused notebook tests passed in 0.215s: wrapper/canonical equality,
+- Sixteen focused notebook tests passed in 0.536s: wrapper/canonical equality,
   code compilation, retained profile, redaction, checksummed download/cache reuse,
   archive path rejection, engine identity and CUDA detection, runtime failure,
-  pre-download glibc guard, active-worker guard,
+  acceptance of Kaggle glibc 2.35, pre-download glibc guard, active-worker guard,
+  ZIP path/checksum manifest rejection,
   private TCP forwarding/key-file cleanup, transport failure cleanup,
   authenticated readiness/degraded rejection, guarded startup/shutdown,
   optional Tailscale secret selection, and Cloudflare URL capture without a log.
@@ -201,7 +220,8 @@ still require their individual interactive approvals.
 - Documented YAML validates through `HarnessConfig` and composes one Stage 4
   llama.cpp attachment requiring both GPU resources with fixture credentials,
   without network calls.
-- Repository scanner: **156 files**, zero configured secret-pattern findings.
+- Repository scanner: **482 files** (including local inspection files), zero
+  configured secret-pattern findings.
   `git diff --check` passes. This is bounded pattern scanning, not perfect DLP.
 - No packaged `harness` production file changed; fresh wheel/install checks are
   not repeated for this notebook/documentation/test-only patch.
