@@ -80,21 +80,21 @@ class CoreService:
     def from_config(cls, config):
         # Composition authority lives here, never in the proposal driver or CLI.
         from pathlib import Path
-        from harness.core.client import KaggleBrainClient
         from harness.providers.comfyui import ComfyUIProvider
+        from harness.providers.llamacpp import LlamaCppProvider
         from harness.telemetry.quota_ledger import QuotaLedger
         from harness.telemetry.session_tracker import SessionTracker
         from harness.storage.undo import UndoManager
         scrubber.register_secret(config.api_key)
         scrubber.register_secret(config.remote_url)
         scrubber.register_secret(config.image_server_url)
-        capabilities = frozenset({"text", "code_tools"})
+        provider = LlamaCppProvider(config.remote_url, config.api_key, config.model_alias, config.request_timeout_seconds)
+        capabilities = frozenset(capability.value for capability in provider.get_capabilities())
         profile_id = fingerprint({"model": config.model_alias, "engine": "llama.cpp", "context": config.max_context_tokens})
         worker = Worker("supervisor-text", "remote-supervisor", "llama.cpp", capabilities)
         profile = ModelProfile(profile_id, worker.worker_id, config.model_alias, worker.engine, capabilities,
                                config.max_context_tokens, min(2048, max(1, config.max_context_tokens // 4)))
-        client = KaggleBrainClient(config.remote_url, config.api_key, config.model_alias, config.request_timeout_seconds)
-        service = cls(config.workspace_root, LlamaCppEngine(client), profile, worker=worker)
+        service = cls(config.workspace_root, LlamaCppEngine(provider.client), profile, worker=worker)
         try:
             service.image_provider = ComfyUIProvider(server_url=config.image_server_url, workspace_root=str(service.store.workspace))
             service.session_tracker = SessionTracker()
