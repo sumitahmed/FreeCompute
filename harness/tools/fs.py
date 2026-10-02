@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
-from harness.tools.sandbox import validate_workspace_path
+from harness.tools.sandbox import validate_workspace_path, SandboxSecurityViolation
 
 
 def read_file(
@@ -153,7 +153,9 @@ def list_dir(
     root = Path(workspace_root).resolve()
 
     for item in sorted(target.iterdir()):
-        if item.name.startswith(".") and item.name in (".git", ".ssh"):
+        try:
+            validate_workspace_path(str(item), workspace_root)
+        except SandboxSecurityViolation:
             continue
         if fnmatch.fnmatch(item.name, pattern):
             results.append({
@@ -185,9 +187,28 @@ def grep_search(
     regex = re.compile(query, re.IGNORECASE)
     matches = []
 
-    files_to_search = [target] if target.is_file() else list(target.rglob("*"))
+    def safe_files():
+        if target.is_file():
+            yield target
+            return
+        for directory, dirs, names in os.walk(target, followlinks=False):
+            safe_dirs = []
+            for name in dirs:
+                try:
+                    validate_workspace_path(str(Path(directory) / name), workspace_root)
+                    safe_dirs.append(name)
+                except SandboxSecurityViolation:
+                    pass
+            dirs[:] = safe_dirs
+            for name in names:
+                yield Path(directory) / name
+    files_to_search = safe_files()
 
     for f in files_to_search:
+        try:
+            f = validate_workspace_path(str(f), workspace_root)
+        except SandboxSecurityViolation:
+            continue
         if not f.is_file():
             continue
         # Skip hidden/binary/git directories
