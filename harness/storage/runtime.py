@@ -10,9 +10,10 @@ import threading
 import uuid
 
 from harness.security import scrubber
+from harness.storage.scheduler_schema import SCHEDULER_SCHEMA
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def identity():
@@ -157,7 +158,14 @@ class RuntimeStore:
             if version == 0:
                 if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
                     raise ValueError("Unversioned database requires explicit migration; preserved")
-                self.db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nPRAGMA user_version=1;\nCOMMIT;")
+                self.db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + SCHEDULER_SCHEMA + "\nPRAGMA user_version=2;\nCOMMIT;")
+            elif version == 1:
+                # Validate workspace ownership before an additive, atomic migration.
+                prior = self.db.execute("SELECT root_hash FROM workspaces").fetchone()
+                root_hash = hashlib.sha256(os.path.normcase(str(self.workspace)).encode()).hexdigest()
+                if not prior or prior[0] != root_hash:
+                    raise ValueError("Runtime database belongs to another workspace; migration refused")
+                self.db.executescript("BEGIN IMMEDIATE;\n" + SCHEDULER_SCHEMA + "\nPRAGMA user_version=2;\nCOMMIT;")
             elif version != SCHEMA_VERSION:
                 raise ValueError("Unsupported runtime schema; explicit migration required")
             root_hash = hashlib.sha256(os.path.normcase(str(self.workspace)).encode()).hexdigest()

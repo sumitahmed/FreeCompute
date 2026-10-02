@@ -39,8 +39,10 @@ power-loss durability certification. No real GPU session was used.
 Bounded Stage 3 acceptance passed 140 unit tests and the fresh installed CLI's
 edit/test, restart/resume and undo-denial workflow. The exact 28-file phase
 inventory and remaining release/worker limits are recorded in
-[STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md#files-in-this-phase). Further
-stages require separate review and authorization.
+[STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md#files-in-this-phase). The
+subsequently authorized V1 backend adds bounded engine/worker and basic queue
+contracts; evidence is in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md)
+and [V1_SCHEDULER.md](V1_SCHEDULER.md). Broader stages require separate review.
 
 ## Shape: modular local core, optional daemon
 
