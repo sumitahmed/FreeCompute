@@ -81,7 +81,7 @@ class HarnessConfig(BaseModel):
     def validate_url(cls, value):
         if value:
             url = urlsplit(value)
-            if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password:
+            if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment:
                 raise ValueError("Expected HTTP(S) URL without embedded credentials")
         return value
 

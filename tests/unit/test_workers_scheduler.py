@@ -195,6 +195,87 @@ class WorkerSchedulerTests(unittest.TestCase):
         self.assertEqual(active, len([x for x in outcomes if x]))
         self.assertGreater(active, 0)
 
+    def test_declared_two_slots_allow_two_actual_inferences_and_queue_third(self):
+        profile = ModelProfile("parallel", model="parallel", engine="fixture", capabilities=TEXT)
+        entered, release = threading.Event(), threading.Event()
+        class Blocking(FakeEngine):
+            def stream(engine, *args):
+                engine.calls.append("parallel")
+                if len(engine.calls) == 2:
+                    entered.set()
+                if not release.wait(5):
+                    raise AssertionError("fixture was not released")
+                yield StreamChunk(delta_content="done", finish_reason="stop")
+                yield StreamChunk(stream_complete=True)
+        engine = Blocking()
+        self.core.attach_worker(Worker("parallel-worker", "private", "fixture", TEXT, concurrency_limit=2), [profile], engine)
+        tasks = [self.submit(profile) for _ in range(3)]
+        outcomes = []
+        def infer(task_id):
+            outcomes.append(self.core.inference.infer(self.core.task(task_id), profile, [], [], CancellationToken()))
+        first = threading.Thread(target=infer, args=(tasks[0],))
+        second = threading.Thread(target=infer, args=(tasks[1],))
+        first.start()
+        deadline = time.monotonic() + 3
+        while not engine.calls and time.monotonic() < deadline:
+            time.sleep(0.01)
+        second.start()
+        try:
+            self.assertTrue(entered.wait(3))
+            self.assertEqual(self.core.store.one("SELECT COUNT(*) n FROM inference_leases WHERE state='active'")["n"], 2)
+            with self.assertRaises(QueueWaiting):
+                self.core.inference.infer(self.core.task(tasks[2]), profile, [], [], CancellationToken())
+        finally:
+            release.set()
+            first.join(5)
+            second.join(5)
+        self.assertEqual(len(outcomes), 2)
+        self.assertEqual(engine.calls, ["parallel", "parallel"])
+        self.assertEqual(self.core.inference.allocation()["state"], "idle")
+
+    def test_local_core_busy_submission_waits_without_concurrent_tool_loop(self):
+        entered, release = threading.Event(), threading.Event()
+        self.local.block, self.local.entered = release, entered
+        first = self.submit()
+        outcomes = []
+        thread = threading.Thread(target=lambda: outcomes.append(self.core.run(first)))
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(3))
+            second = self.submit(QWEN)
+            self.assertEqual(self.core.run(second)["status"], "queued")
+            self.assertEqual(self.qwen.calls, [])
+        finally:
+            release.set()
+            thread.join(5)
+        self.assertEqual(outcomes[0]["status"], "completed")
+        self.assertEqual(self.core.run_next()["task_id"], second)
+
+    def test_submission_queue_failure_rolls_back_task_command_and_events(self):
+        original = self.core.sessions.queue_writer
+        def failure(*args):
+            original(*args)
+            raise RuntimeError("fixture failure after queue insert")
+        self.core.sessions.queue_writer = failure
+        with self.assertRaises(RuntimeError):
+            self.submit(QWEN)
+        for table in ("tasks", "sessions", "commands", "events", "checkpoints", "inference_queue"):
+            self.assertEqual(self.core.store.one('SELECT COUNT(*) n FROM "' + table + '"')["n"], 0)
+
+    def test_cancel_after_admission_before_dispatch_releases_without_calling_engine(self):
+        self.core.subscribe(lambda e: self.core.cancel() if e["kind"] == "queue.assigned" else None)
+        result = self.core.run(self.submit(QWEN))
+        self.assertEqual(result["status"], "cancelled")
+        self.assertEqual(self.qwen.calls, [])
+        self.assertEqual(self.core.inference.allocation()["state"], "idle")
+        self.assertEqual(self.core.store.all("SELECT * FROM resource_claims"), [])
+
+    def test_late_cancel_cannot_change_committed_completed_task(self):
+        self.core.subscribe(lambda e: self.core.cancel() if e["kind"] == "task.completed" else None)
+        result = self.core.run(self.submit())
+        self.assertEqual(result["status"], "completed")
+        self.assertFalse(result["is_cancelled"])
+
     def test_unhealthy_worker_waits_and_reconnects(self):
         self.qwen.health = ConnectionError("fixture disconnected")
         task_id = self.submit(QWEN)
@@ -307,6 +388,25 @@ class WorkerSchedulerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.core.attach_worker(KAGGLE, [replace(QWEN, model="changed")], self.qwen)
         self.assertEqual(self.core.registry.profile(QWEN.profile_id).model, QWEN.model)
+
+    def test_default_selection_does_not_rebind_queued_task(self):
+        task_id = self.submit(QWEN, KAGGLE.worker_id)
+        before = self.core.task(task_id)
+        self.core.select_model("qwen", KAGGLE.worker_id)
+        self.core.select_model("small", "local-small")
+        after = self.core.task(task_id)
+        self.assertEqual((after["profile_id"], after["context_epoch"], after["driver"]),
+                         (before["profile_id"], before["context_epoch"], before["driver"]))
+        self.assertEqual(self.core.scheduler.requested_worker(task_id), KAGGLE.worker_id)
+
+    def test_unknown_remote_worker_does_not_block_healthy_independent_worker(self):
+        self.qwen.failure = TimeoutError("fixture timeout")
+        self.core.run(self.submit(QWEN))
+        self.core.select_model("small", "local-small")
+        result = self.core.run(self.submit())
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(self.core.inference.allocation()["state"], "quarantined")
+        self.assertEqual(len(self.core.store.all("SELECT * FROM resource_claims")), 2)
 
     def test_idempotent_submission_binds_worker_route_and_stays_one_queue_entry(self):
         task_id = self.submit(QWEN, KAGGLE.worker_id, request_id="request")

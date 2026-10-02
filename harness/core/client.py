@@ -77,7 +77,7 @@ class KaggleBrainClient:
         timeout_seconds: int = 900,
     ):
         parsed = urllib.parse.urlsplit(base_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("Inference endpoint must use HTTP(S) without URL credentials")
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key

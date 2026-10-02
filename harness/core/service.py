@@ -218,6 +218,16 @@ class CoreService:
 
     def run(self, task_id, *, approval_resolver=None):
         if not self._run_lock.acquire(blocking=False):
+            task = self.task(task_id)
+            if task_id == self._running_task_id:
+                raise RuntimeError("This local core already has this task active")
+            if task["state"] == "queued":
+                with self.store.transaction() as db:
+                    db.execute("UPDATE inference_queue SET waiting_reason='Local task/approval loop is busy' WHERE task_id=? AND state='queued'", (task_id,))
+                    event = self.store.event(db, task["session_id"], task_id, "queue.waiting", {"reason": "Local task/approval loop is busy"}, revision=task["revision"])
+                    self.store.checkpoint(db, task_id)
+                self._publish(event)
+                return self._summary(task_id)
             raise RuntimeError("This local core already has an active task")
         usage = ttft_ms = None
         self._running_task_id = task_id
@@ -467,7 +477,7 @@ class CoreService:
 
     def set_image_endpoint(self, value):
         parsed = urlsplit(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("Image endpoint must be HTTP(S) without embedded credentials")
         if self._run_lock.locked() or self.inference.allocation()["state"] != "idle":
             raise ValueError("Resolve the active/uncertain allocation before changing the image endpoint")
@@ -503,11 +513,9 @@ class CoreService:
     def select_profile(self, profile):
         if isinstance(profile, str):
             profile = self.registry.profile(profile)
-        if self._run_lock.locked() or self.inference.allocation()["state"] != "idle":
-            raise ValueError("Cannot change profiles while inference is active or uncertain")
-        unfinished = self.store.one("SELECT id FROM tasks WHERE state NOT IN ('completed','failed','malformed','truncated','incomplete','max_turns','context_overflow','cancelled') LIMIT 1")
-        if unfinished:
-            raise ValueError("Resume/resolve the pending task before changing its model profile")
+        if self._run_lock.locked():
+            raise ValueError("Cannot change the default profile during the active local task")
+        # Default selection never changes an existing task's profile, scope or route.
         registered = self.store.one("SELECT id FROM model_profiles WHERE id=?", (profile.profile_id,))
         if not registered:
             worker = self.worker

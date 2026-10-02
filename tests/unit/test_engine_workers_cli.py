@@ -242,6 +242,12 @@ class EngineAndCliTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT id,state,result FROM actions ORDER BY rowid").fetchall(), receipts)
         db.close()
 
+    def test_base_url_query_or_fragment_is_rejected_without_echoing_input(self):
+        for url in ("https://example.invalid/?token=SYNTHETIC_INLINE_CREDENTIAL", "https://example.invalid/#fragment"):
+            with self.assertRaises(ValueError) as caught:
+                HarnessConfig(remote_url=url)
+            self.assertNotIn(url, str(caught.exception))
+
     def test_actual_cli_runs_preexisting_queue_after_core_restart(self):
         core = self.start()
         task_id = core.submit("hello", profile_id="qwen", worker_id="kaggle-qwen", allowed_tools=[])
