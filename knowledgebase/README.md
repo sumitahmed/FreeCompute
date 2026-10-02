@@ -2,7 +2,7 @@
 
 Research date: **2026-10-02**. Audited baseline: `main`, `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`.
 
-**Current status: Stage 1 repairs and a bounded OpenHands compatibility spike were subsequently authorized.** The original architecture remains proposed. See [Stage 1 evidence](STAGE1_SAFETY_BASELINE.md) and [SDK results](OPENHANDS_COMPATIBILITY_SPIKE.md): **NEEDS MORE EVIDENCE**, no production SDK adoption. No GPU sessions, tunnels, deployments, GUI, website or broad V2 runtime was started.
+**Current status:** Stage 1 safety repairs are preserved; the completed pinned OpenHands experiment is **REJECTED** as the general foundation. The subsequently authorized native driver qualified and the Stage 3 local runtime is implemented under final acceptance. See the records below. Broader scheduling/delegation, GUI, daemon and real GPU/deployment work remain proposed.
 
 Read these in order:
 
@@ -10,6 +10,9 @@ Read these in order:
 | --- | --- |
 | [STAGE1_SAFETY_BASELINE.md](STAGE1_SAFETY_BASELINE.md) | Implemented changes, tests and remaining safety limits |
 | [OPENHANDS_COMPATIBILITY_SPIKE.md](OPENHANDS_COMPATIBILITY_SPIKE.md) | Exact SDK pin, compatibility matrix, decision and review gate |
+| [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md) | Historical SDK experiment/rejection and preserved evidence |
+| [CUSTOM_DRIVER_QUALIFICATION.md](CUSTOM_DRIVER_QUALIFICATION.md) | Native proposal-only foundation and qualification results |
+| [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md) | Actual production boundaries, SQLite/recovery, CLI, tests, limitations |
 | [FREECOMPUTE_V2_VISION.md](FREECOMPUTE_V2_VISION.md) | Product boundaries, recommended direction, unresolved choices |
 | [CURRENT_ARCHITECTURE_AUDIT.md](CURRENT_ARCHITECTURE_AUDIT.md) | Actual code, defects, evidence strength, components to preserve |
 | [RESEARCH_EVIDENCE.md](RESEARCH_EVIDENCE.md) | Inspection coverage, test/probe results, immutable upstream source inventory |
@@ -33,4 +36,4 @@ Evidence vocabulary throughout this set:
 - **Inference:** a risk deduced from code or documentation, with no live reproduction.
 - **Proposed:** future behavior; not implemented or authorized.
 
-The recommended foundation is a **modular Python local core**, initially one process, with an optional authenticated local daemon later. Evaluate a pinned OpenHands SDK agent adapter before building a replacement loop. Keep all authoritative execution, approvals, state, scheduling, and memory ownership in FreeCompute. Do not fork a whole application merely to get an agent loop.
+The implemented foundation is a **modular Python local core** with a replaceable narrow native proposal driver. OpenHands remains an optional historical experiment. Authoritative execution, approvals and state stay in FreeCompute. An authenticated daemon, scheduler and reviewed memory services remain later stages.

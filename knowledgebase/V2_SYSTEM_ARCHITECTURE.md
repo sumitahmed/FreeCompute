@@ -1,6 +1,40 @@
 # V2 system architecture
 
-Proposed, 2026-10-02. Implementation requires user approval. Foundation choice and its hard gates are in [BUILD_VS_REUSE_DECISION.md](BUILD_VS_REUSE_DECISION.md).
+Updated, 2026-10-02. The user authorized the narrow native driver and Stage 3 local runtime. Broader scheduler/GUI/daemon architecture below remains proposed. The pinned SDK was rejected in [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); current acceptance is in [CUSTOM_DRIVER_QUALIFICATION.md](CUSTOM_DRIVER_QUALIFICATION.md) and [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md).
+
+## Implemented Stage 3 slice
+
+The actual entry point now constructs `CoreService.from_config` and a
+`harness/cli/core_client.py` presentation adapter. CoreService owns providers,
+session/task state, inference and tool brokers, permission service, skill scope,
+versioned SQLite, checkpoints and private snapshot references. `NativeAgentDriver`
+receives only serializable state and normalized responses; it has no broker or
+filesystem handle. Its only outputs are proposals and explicit outcomes.
+
+| Production boundary | Actual path/API |
+| --- | --- |
+| Composition and task loop | `harness/core/service.py`: `submit`, `run`, `resume`, `cancel` |
+| Sessions and idempotent submissions | `harness/core/sessions.py`: `SessionManager.submit` |
+| Driver and budget | `harness/core/native_driver.py`, `harness/core/context.py` |
+| One inference allocation | `harness/core/inference.py`: `infer`, quarantine, operator idle confirmation |
+| Worker/engine/profile contracts | `harness/core/runtime_models.py`: `Worker`, `ModelProfile`, `EngineAdapter`, `LlamaCppEngine` |
+| Approved local effects | `harness/core/tool_broker.py`, `harness/core/permissions.py`, existing `harness/tools/registry.py` and sandbox |
+| Durable state and preimages | `harness/storage/runtime.py`, `harness/storage/artifacts.py` |
+
+The current CLI uses an in-process API and sanitized ordered events. Its session
+history is persisted by the core. The new database is local application data,
+outside OneDrive/repository; OS ownership refuses a second core for the same
+canonical workspace under the same application-data root. Legacy journals are
+preserved. Legacy undo can be explicitly restored through a new durable approval.
+The older `AgentOrchestrator` remains a compatibility API and does not acquire
+the new runtime's SQLite/recovery guarantees.
+
+Stage 3 uses one selected text profile and serializes text/image inference on one
+local allocation. This is not a physical GPU scheduler. Interrupted transport
+quarantines that allocation; remote health alone is not proof it became idle.
+Context counts are labeled UTF-8 estimates; advanced compaction and verified
+tokenizers/profile manifests are later work. Process restart tests are not
+power-loss durability certification. No real GPU session was used.
 
 ## Shape: modular local core, optional daemon
 
@@ -28,7 +62,7 @@ flowchart TB
   Engines --> Remote[Local or remote inference workers]
 ```
 
-The diagram is a proposal, not the current runtime. Engine adapters never receive a `ToolBroker`, workspace filesystem handle, or terminal capability. The driver has typed broker interfaces, not unrestricted host objects.
+The diagram shows the broader proposed target, including unimplemented scheduling and clients. In the current slice, CoreService calls brokers; the driver cannot call them. Engine adapters receive model/input/cancellation data, not tool authority. Local Python extensions and approved shell commands remain trusted-host code, not an OS sandbox.
 
 ## Contracts
 

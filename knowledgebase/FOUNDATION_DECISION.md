@@ -2,6 +2,12 @@
 
 2026-10-02. Branch: `v2/safety-and-agentdriver-spike`.
 
+**Historical phase record through `e869f1f`:** the rejection below remains the
+pinned SDK decision. Later authorization selected the native proposal driver and
+Stage 3; their current evidence is in [CUSTOM_DRIVER_QUALIFICATION.md](CUSTOM_DRIVER_QUALIFICATION.md)
+and [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md). Statements here about an
+unchanged CLI or unstarted replacement apply to this earlier SDK experiment.
+
 ## Checkpoint preservation
 
 **Observed:** the previously uncommitted Stage 1 work is now present in local checkpoint history through `2675686`, and the working tree was clean at the start of this task. The cumulative Stage 1 change set still contains the same 38 files. No reset, discard, reconstruction, or history rewrite was performed. Local/main tracking references remain `1300566dca62a0f804487e7101767e688e551184`.
