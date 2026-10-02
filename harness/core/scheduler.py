@@ -23,19 +23,30 @@ class Scheduler:
         task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         return self.store.event(db, task["session_id"], task_id, kind, payload, revision=task["revision"])
 
+    def admit_submission(self, db, task, profile, schemas, route, operation):
+        """Submission and its first queue entry cannot be separated by a crash."""
+        capabilities = {"image_gen"} if operation == "image" else {"text", "code_tools"} if schemas else {"text"}
+        queue_id = identity()
+        db.execute("""INSERT INTO inference_queue(id,task_id,profile_id,context_epoch,turn,required_capabilities,
+            requested_worker,state,created_at,updated_at) VALUES(?,?,?,?,0,?,?,'queued',?,?)""",
+                   (queue_id, task["id"], profile.profile_id, task["context_epoch"], encode(sorted(capabilities)), route, timestamp(), timestamp()))
+        self.store.update_task(db, task["id"], state="queued")
+        return self._event(db, task["id"], "queue.enqueued", {"queue_id": queue_id, "profile_id": profile.profile_id,
+                                                              "requested_worker": route, "turn": 0})
+
     def enqueue(self, task, profile, capabilities, *, requested_worker=None, request_hash=None):
         capabilities = frozenset(capabilities)
         if not capabilities <= profile.capabilities:
             raise ValueError("Required inference capabilities exceed the model profile")
-        candidates = self.registry.candidates(profile.profile_id, requested_worker)
-        if not candidates:
-            raise ValueError("No registered worker supports this profile/route; inspect /workers and /models")
+        self.registry.profile(profile.profile_id)
         state = NativeState.recover(task["driver"])
         emitted = []
         with self.store.transaction() as db:
             row = db.execute("SELECT * FROM inference_queue WHERE task_id=? AND context_epoch=? AND turn=?",
                              (task["id"], task["context_epoch"], state.turns)).fetchone()
             if row:
+                if row["state"] != "queued":
+                    raise AllocationUnavailable("Inference request is active, completed or awaiting reconciliation")
                 if row["profile_id"] != profile.profile_id or json.loads(row["required_capabilities"]) != sorted(capabilities):
                     raise ValueError("Queue identity reused with changed model/capability requirements")
                 if row["requested_worker"] != requested_worker:

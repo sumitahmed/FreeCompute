@@ -16,14 +16,21 @@ class WorkerRegistry:
         with store.transaction() as db:
             db.execute("UPDATE workers SET health='unverified',checked_at=NULL")
 
-    def add_profile(self, profile):
+    def add_profile(self, profile, *, replace_completed=False):
         value = profile.to_dict()
         if scrubber.structured(value) != value:
             raise ValueError("Profile declarations cannot contain credentials or secret endpoints")
         with self.store.transaction() as db:
             old = db.execute("SELECT declaration FROM model_profiles WHERE id=?", (profile.profile_id,)).fetchone()
             if old and old[0] != encode(value):
-                raise ValueError("Profile IDs are immutable; use a new ID for changed declarations")
+                unfinished = db.execute("SELECT 1 FROM tasks WHERE profile_id=? AND state NOT IN ('completed','failed','malformed','truncated','incomplete','max_turns','context_overflow','cancelled')", (profile.profile_id,)).fetchone()
+                held = db.execute("SELECT 1 FROM inference_leases WHERE profile_id=? AND state IN ('active','quarantined')", (profile.profile_id,)).fetchone()
+                if not replace_completed or unfinished or held:
+                    raise ValueError("Profile IDs are immutable while referenced; use a new ID for changed declarations")
+                # Retain the old embedding API after terminal tasks, and its declarations.
+                from harness.storage.runtime import fingerprint
+                db.execute("INSERT OR IGNORE INTO metadata VALUES(?,?)", ("profile_history:" + fingerprint(json.loads(old[0])), old[0]))
+                db.execute("UPDATE model_profiles SET declaration=? WHERE id=?", (encode(value), profile.profile_id))
             db.execute("INSERT OR IGNORE INTO model_profiles VALUES(?,1,?)", (profile.profile_id, encode(value)))
 
     def profile(self, profile_id):
@@ -42,7 +49,7 @@ class WorkerRegistry:
         for profile in profiles:
             if worker.engine not in profile.engine_requirements or not profile.capabilities <= worker.capabilities or not profile.resource_requirements <= worker.resources:
                 raise ValueError("Model profile cannot run on this worker's engine/capabilities/resources")
-            self.add_profile(profile)
+            self.add_profile(profile, replace_completed=trusted_embedding)
         declaration = worker.to_dict()
         for transient in ("health", "last_seen", "observed_resources"):
             declaration.pop(transient)

@@ -160,6 +160,30 @@ def run_interactive_repl(
 
         cmd = user_input.lower()
         resume_session = None
+        run_next = cmd == "/run-next"
+
+        if cmd == "/workers":
+            for worker in orchestrator.workers():
+                print(f"{worker['worker_id']}  {worker['location']}  {worker['engine']}  health={worker['health']}  leases={worker['active_or_quarantined']}/{worker['concurrency_limit']}  last_seen={worker['last_seen']}")
+            continue
+        if cmd == "/models":
+            for model in orchestrator.models():
+                print(f"{model['profile_id']}  {model['model']}  capabilities={','.join(model['capabilities'])}  workers={','.join(model['workers'])}  verification={model['verification']}")
+            continue
+        if cmd == "/queue":
+            for queued in orchestrator.queue():
+                print(f"{queued['task_id']}  {queued['state']}  profile={queued['profile_id']}  worker={queued['requested_worker'] or 'any eligible'}  {queued['waiting_reason']}")
+            continue
+        if cmd.startswith("/model "):
+            parts = user_input.split()
+            try:
+                if len(parts) not in {2, 3}:
+                    raise ValueError("Usage: /model <profile-id> [worker-id]")
+                orchestrator.select_model(parts[1], parts[2] if len(parts) == 3 else None)
+                print("Selected model route updated. The next task uses this selection.")
+            except Exception as exc:
+                print(fmt.red(scrubber.scrub(exc)))
+            continue
 
         if cmd == "/sessions":
             for session in orchestrator.list_sessions():
@@ -173,13 +197,22 @@ def run_interactive_repl(
             for action in orchestrator.actions():
                 print(f"{action['id']}  {action['name']}  {action['state']}  target={action['target']}  current={action['current_hash']}  pre={action['pre_hash']}  post={action['post_hash']}")
             continue
-        if cmd == "/cancel":
-            orchestrator.cancel()
-            print("Local stop requested; remote cancellation is unconfirmed.")
-            continue
-        if cmd == "/reconcile-inference":
+        if cmd == "/cancel" or cmd.startswith("/cancel "):
             try:
-                print(orchestrator.reconcile_inference(lambda n, a: handle_approval_prompt(n, a, fmt)))
+                parts = user_input.split()
+                if len(parts) > 2:
+                    raise ValueError("Usage: /cancel [task-id]")
+                orchestrator.cancel(parts[1] if len(parts) == 2 else None)
+                print("Cancellation recorded/requested. Running remote cancellation remains unconfirmed.")
+            except Exception as exc:
+                print(fmt.red(scrubber.scrub(exc)))
+            continue
+        if cmd == "/reconcile-inference" or cmd.startswith("/reconcile-inference "):
+            try:
+                parts = user_input.split()
+                if len(parts) > 2:
+                    raise ValueError("Usage: /reconcile-inference [lease-id]")
+                print(orchestrator.reconcile_inference(lambda n, a: handle_approval_prompt(n, a, fmt), parts[1] if len(parts) == 2 else None))
             except Exception as exc:
                 print(fmt.red(scrubber.scrub(exc)))
             continue
@@ -260,10 +293,13 @@ def run_interactive_repl(
             active_model = orchestrator.model_info()
             print(fmt.cyan("\n--- ACTIVE MODEL CONFIGURATION ---"))
             print(f"Model Alias     : {active_model['model']}")
+            print(f"Engine          : {active_model['engine']}")
+            print(f"Worker Route    : {active_model['selected_worker'] or 'any eligible worker'}")
+            for worker in active_model['eligible_workers']:
+                print(f"Worker Health   : {worker['worker_id']} {worker['health']}")
             print(f"Max Context     : {active_model['context_capacity']} tokens (declared)")
             print(f"Reserved Output : {active_model['reserved_completion']} tokens")
             print(f"Allocation      : {active_model['allocation']['state']}")
-            print(f"Remote Endpoint : {scrubber.scrub(config.remote_url)}")
             print(f"Image Server    : {scrubber.scrub(comfy_prov.server_url) or 'Not configured'}")
             print(f"Transport Mode  : {config.transport}")
             print(fmt.cyan("-" * 34))
@@ -283,13 +319,18 @@ def run_interactive_repl(
             print("  /image <prompt>  Generate an image via ComfyUI (requires image server)")
             print("  /image-server    Set or view ComfyUI image server URL")
             print("  /model           Show active model engine, context window, and endpoint")
+            print("  /model <id> [worker]  Select a configured model profile and optional worker")
+            print("  /workers         Show worker health, capacity and last seen")
+            print("  /models          Show configured model profiles and eligible workers")
+            print("  /queue           Inspect queued/running/uncertain inference requests")
+            print("  /run-next        Run the oldest currently eligible queued task")
             print("  /sessions        List persisted sessions")
             print("  /resume <id>     Resume a persisted session without repeating receipts")
             print("  /new             Start a new conversation on the next prompt")
             print("  /actions         Inspect recent action IDs and uncertain outcomes")
             print("  /reconcile       Resolve an uncertain action with an explicit decision")
-            print("  /reconcile-inference  Confirm an uncertain remote allocation is idle")
-            print("  /cancel          Request local stop (Ctrl+C also stops an active task)")
+            print("  /reconcile-inference [lease]  Confirm one uncertain remote allocation is idle")
+            print("  /cancel [task]   Cancel queued work or request local stop")
             print("  /clear           Clear the terminal console")
             print("  exit / quit      Exit the CLI")
             print(fmt.dim("  <any prompt>     Execute coding task with sandboxed tools and approval gates\n"))
@@ -328,6 +369,9 @@ def run_interactive_repl(
             print(fmt.cyan(f"\n● [IMAGE GEN] Submitting prompt: \"{prompt_text}\""))
             try:
                 res = comfy_prov.generate_image(prompt=prompt_text)
+                if not res.get('file_path'):
+                    print(fmt.yellow(f"Image task {res.get('task_id')}: {res.get('status')} - {res.get('message', '')}"))
+                    continue
                 print(fmt.green(f"● [IMAGE SAVED] Generated image downloaded to: {res['file_path']}"))
                 # Try opening on Windows
                 if os.name == "nt":
@@ -344,7 +388,7 @@ def run_interactive_repl(
         # Check if the user invoked a registered skill
         target_prompt = user_input
         first_token = user_input.split()[0].lower()
-        active_skill = skills_mgr.get_skill(first_token) if not resume_session else None
+        active_skill = skills_mgr.get_skill(first_token) if not resume_session and not run_next else None
         if active_skill:
             skill_args = user_input[len(first_token):].strip()
             target_prompt = skill_args or "Execute the skill workflow on the current project context."
@@ -413,7 +457,9 @@ def run_interactive_repl(
                 on_approval_request=approval_callback,
                 on_tool_executed=on_tool_executed,
             )
-            if resume_session:
+            if run_next:
+                result = orchestrator.run_next(**callbacks)
+            elif resume_session:
                 result = orchestrator.resume(resume_session, **callbacks)
             else:
                 result = orchestrator.run_task(user_prompt=target_prompt, skill=active_skill, **callbacks)
@@ -448,6 +494,9 @@ def _main():
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--observe-quota", type=float, default=None, help="Set user-observed quota balance (hours)")
     parser.add_argument("--prompt", type=str, default="", help="Prompt for direct image or task execution")
+    parser.add_argument("--engine", choices=["llama.cpp", "openai-compatible"], default=None, help="Legacy endpoint protocol")
+    parser.add_argument("--profile", default="", help="Configured model profile ID")
+    parser.add_argument("--worker", default="", help="Configured worker ID")
     args = parser.parse_args()
 
     scrubber.register_secret(args.api_key)
@@ -460,6 +509,12 @@ def _main():
         config.image_server_url = args.image_server
     if args.workspace:
         config.workspace_root = args.workspace
+    if args.engine:
+        config.engine = args.engine
+    if args.profile:
+        config.selected_profile = args.profile
+    if args.worker:
+        config.selected_worker = args.worker
 
     workspace_root = str(Path(config.workspace_root).resolve())
 
@@ -502,7 +557,10 @@ def _run_client(args, config, core, fmt):
             return
         print(f"Generating image for: \"{prompt_text}\"...")
         res = client.generate_image(prompt=prompt_text)
-        print(fmt.green(f"Image saved to: {res['file_path']}"))
+        if res.get('file_path'):
+            print(fmt.green(f"Image saved to: {res['file_path']}"))
+        else:
+            print(fmt.yellow(f"Image task {res.get('task_id')}: {res.get('status')} - {res.get('message', '')}"))
         return
 
     # Default interactive REPL

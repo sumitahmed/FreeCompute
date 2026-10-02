@@ -70,7 +70,7 @@ class CoreService:
             self.selected_worker = selected_worker if attachments is not None else self.worker.worker_id
             self.scheduler = Scheduler(self.store, self.registry, self._publish)
             self.inference = InferenceBroker(self.store, self.registry, self.scheduler, self._publish, self.worker.worker_id)
-            self.sessions = SessionManager(self.store, self._publish)
+            self.sessions = SessionManager(self.store, self._publish, self.scheduler.admit_submission)
             self.current_session_id = None
             self.quota = self.session_tracker = self.image_provider = None
             self.image_profile_id = None
@@ -166,8 +166,6 @@ class CoreService:
                                       allowed, session_id=session_id, request_id=request_id,
                                       max_turns=max_turns, selected_context=selected_context, requested_worker=route)
         self.current_session_id = self.task(task_id)["session_id"]
-        if self.task(task_id)["state"] not in TERMINAL:
-            self.scheduler.enqueue(self.task(task_id), profile, {"text", "code_tools"} if schemas else {"text"}, requested_worker=route)
         return task_id
 
     def task(self, task_id):
@@ -403,6 +401,8 @@ class CoreService:
             with self.store.transaction() as db:
                 task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
                 state = NativeState.recover(task["driver"])
+                if task["state"] == "cancel_requested" and state.cancellation_requested:
+                    return
                 state.cancellation_requested = True
                 updated = self.store.update_task(db, task_id, state="cancel_requested", driver=state.serialize())
                 event = self.store.event(db, task["session_id"], task_id, "task.cancel_requested", {"status": "cancel_requested", "remote_cancel_confirmed": False}, revision=updated["revision"])
@@ -592,9 +592,10 @@ class CoreService:
                             resource_pool=self.worker.resource_pool or self.worker.worker_id, resources=self.worker.resources)
             self.registry.attach(worker, [profile], ComfyUIEngine(self.image_provider), trusted_embedding=self.worker.location == "fixture")
             self.image_profile_id = profile.profile_id
-        profile = self.registry.profile(self.image_profile_id)
-        task_id = self.sessions.submit(prompt, profile, "Image generation", [], [], operation="image")
-        self.scheduler.enqueue(self.task(task_id), profile, {"image_gen"})
+        profile_id = self.profile.profile_id if "image_gen" in self.profile.capabilities else self.image_profile_id
+        profile = self.registry.profile(profile_id)
+        task_id = self.sessions.submit(prompt, profile, "Image generation", [], [], operation="image",
+                                      requested_worker=self.selected_worker if profile_id == self.profile.profile_id else None)
         return self._execute_image_task(task_id)
 
     def _execute_image_task(self, task_id):

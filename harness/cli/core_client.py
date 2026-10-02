@@ -28,7 +28,11 @@ class CoreClient:
                 callbacks["on_tool_executed"](payload["tool"], result)
             elif phase:
                 if kind == "model.requested":
-                    phase("requesting_model", f"Model request {payload['attempt_id'][:8]}")
+                    phase("requesting_model", f"Worker {payload['worker_id']} / model request {payload['attempt_id'][:8]}")
+                elif kind == "queue.enqueued":
+                    phase("queued", f"Profile {payload['profile_id']} entered the queue")
+                elif kind == "queue.waiting":
+                    phase("waiting", payload['reason'])
                 elif kind == "model.replayed":
                     phase("recovering", "Using the persisted inference receipt")
                 elif kind == "tool.execution_intent":
@@ -73,11 +77,26 @@ class CoreClient:
     def reconcile(self, action_id, outcome, expected_hash, resolver):
         return self._core.tool_broker.reconcile(action_id, outcome, expected_hash, resolver)
 
-    def reconcile_inference(self, resolver):
-        return self._core.inference.reconcile_idle(resolver)
+    def reconcile_inference(self, resolver, lease_id=None):
+        return self._core.inference.reconcile_idle(resolver, lease_id)
 
-    def cancel(self):
-        self._core.cancel()
+    def cancel(self, task_id=None):
+        self._core.cancel(task_id)
+
+    def workers(self):
+        return self._core.list_workers(refresh=True)
+
+    def models(self):
+        return self._core.list_models()
+
+    def queue(self):
+        return self._core.list_queue()
+
+    def select_model(self, profile_id, worker_id=None):
+        return self._core.select_model(profile_id, worker_id)
+
+    def run_next(self, **callbacks):
+        return self._rendered(lambda: self._core.run_next(approval_resolver=callbacks.get("on_approval_request")), callbacks)
 
     def get_health(self):
         return self._core.get_health()

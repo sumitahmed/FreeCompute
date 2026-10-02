@@ -10,8 +10,9 @@ TERMINAL = {"completed", "failed", "malformed", "truncated", "incomplete", "max_
 
 
 class SessionManager:
-    def __init__(self, store, publish):
+    def __init__(self, store, publish, queue_writer=None):
         self.store, self.publish = store, publish
+        self.queue_writer = queue_writer
 
     def list_sessions(self):
         return self.store.all("SELECT id,status,profile_id,context_epoch,revision,current_task_id,created_at,updated_at FROM sessions ORDER BY updated_at DESC")
@@ -71,6 +72,9 @@ class SessionManager:
             db.execute("UPDATE sessions SET current_task_id=?,status='created',revision=revision+1,updated_at=? WHERE id=?", (task_id, timestamp(), session_id))
             emitted.append(self.store.event(db, session_id, task_id, "task.created", {"agent_id": agent_id, "prompt": prompt,
                 "allowed_tools": sorted(allowed_tools), "request_id": request_id}, actor="user"))
+            if self.queue_writer and operation in {"task", "image"}:
+                task = dict(db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
+                emitted.append(self.queue_writer(db, task, profile, schemas, requested_worker, operation))
             self.store.checkpoint(db, task_id)
         for event in emitted:
             self.publish(event)

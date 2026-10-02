@@ -169,7 +169,11 @@ class KaggleBrainClient:
                 if cancellation_token:
                     cancellation_token.attach_response(resp)
                 completed = False
-                for raw_line in resp:
+                for raw_line in iter(lambda: resp.readline(1024 * 1024 + 1), b""):
+                    if len(raw_line) > 1024 * 1024:
+                        raise ValueError("Inference SSE line exceeded its byte limit")
+                    if time.monotonic() - start_time > self.timeout_seconds:
+                        raise TimeoutError("Inference exceeded its configured request deadline")
                     if cancellation_token and cancellation_token.is_cancelled:
                         break
 
