@@ -114,7 +114,7 @@ Codex will read the private bearer locally without printing it, register it with
 the scrubber, and set `FREECOMPUTE_API_KEY` in the acceptance process. Explicit
 worker `api_key_env` reads process environment, not the CLI loader's `.env` map;
 do not assume `.env` alone populates explicit worker credentials. Populate an
-ignored local config from these declarations with the returned private URL:
+ignored local config from these declarations with the returned URL:
 
 ```yaml
 selected_profile: kaggle-qwen-historical-64k
@@ -151,13 +151,17 @@ still require their individual interactive approvals.
 
 ## Freshly tested locally
 
-- Full unit suite: **197 tests passed in 41.025s**, including eight new notebook
+- Full unit suite: **199 tests passed in 31.224s**, including ten notebook
   regressions. Existing authenticated loopback CLI/engine and process recovery
   integration cases run as part of that suite.
-- Eight focused notebook tests passed in 0.108s: wrapper/canonical equality,
+- Ten focused notebook tests passed in 0.110s: wrapper/canonical equality,
   code compilation, retained profile, redaction, pinned checkout ordering,
   private TCP forwarding/key-file cleanup, transport failure cleanup,
-  authenticated readiness/degraded rejection, and guarded startup/shutdown.
+  authenticated readiness/degraded rejection, guarded startup/shutdown,
+  optional Tailscale secret selection, and Cloudflare URL capture without a log.
+- The first full run in the restricted sandbox failed because Windows AppData
+  owner-state writes were denied (11 failures, 58 errors). The authorized rerun
+  with normal filesystem access passed all 199; no test assertion was weakened.
 - All code cells compile; notebook JSON parses; no saved outputs/execution
   counts. `nbformat` is not installed, so its library schema validator was not
   run. No actual Kaggle execution is implied.

@@ -5,7 +5,9 @@ Real-worker preparation, 2026-10-02: use the feature branch's corrected
 [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Both server wrappers
 are synchronized; historical proof output is preserved. Preparation does not
 start a GPU session or certify streaming/model behavior. Real results remain
-unverified until the user returns the private Tailscale endpoint.
+unverified until the user returns an authorized endpoint. The subsequently
+requested Cloudflare URL option is available for startup checks; Quick Tunnels'
+SSE limitation does not qualify it for streaming acceptance.
 
 2026-10-02. Authorized continuation from Stage 3 acceptance
 `aa15fc9fa87c45624acfc8eaf1aa5795f6603578` on
