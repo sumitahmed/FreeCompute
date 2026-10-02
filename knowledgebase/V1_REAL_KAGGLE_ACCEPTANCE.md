@@ -36,7 +36,7 @@ attachments. No remote component executes local tools.
 | Tokenizer/template | Embedded GGUF identities; no override; exact hashes unverified |
 | Pool / resources / concurrency | `kaggle-dual-t4` / `gpu0`, `gpu1` / 1 |
 | Auth / transport | Private bearer token / Tailscale Serve raw TCP on 8081 |
-| GPU memory | Must be freshly observed in cells 3, 7 and 9; no fresh number yet |
+| GPU memory | Must be freshly observed in code cells 2, 6 and 8; no fresh number yet |
 
 The historical handoff distinguishes the saved 32K proof notebook from the
 user-reported later 64K allocation and 46,722-token synthetic recall. Neither
@@ -47,7 +47,7 @@ failure; do not silently change context, weights, template or flags.
 ## Confirmed preparation defects and bounded fixes
 
 - Both wrappers advertised Run All despite a final cell that stopped inference.
-  Instructions now require cells 2-9 individually; shutdown requires an explicit
+  Instructions now require code cells 1-8 individually; shutdown requires an explicit
   `CONFIRM_SHUTDOWN = True`. Startup/configuration/transport refuse active reruns.
 - The cold build's heading claimed a pinned engine but cloned current HEAD.
   Fetch and detach at the historical pin, verify HEAD before CMake. Default
@@ -84,18 +84,19 @@ Before allocating GPU time:
    with the same bearer value and `TAILSCALE_AUTHKEY` with the tailnet key.
 4. Set Accelerator **GPU T4 x2**, Internet **ON**, Persistence **None**. Attach
    **no datasets/inputs**. Start the interactive session only when ready.
-5. Run physical notebook cells **2, 3, 4, 5, 6, 7, 8, 9**, individually, in order.
-   Cell 1 is instructions. Stop on an error; report the redacted error.
-6. Cell 7 must print `SUPERVISOR HEALTHY ON PORT 8081`; cell 8 prints
+5. Run code cells **1, 2, 3, 4, 5, 6, 7, 8**, individually, in order.
+   Use the code-cell heading numbers; the introductory Markdown is not counted.
+   Code cell 1 is MODEL SELECTION & RUNTIME CONFIGURATION. Stop on an error; report the redacted error.
+6. Code cell 6 must print `SUPERVISOR HEALTHY ON PORT 8081`; code cell 7 prints
    `TAILSCALE TCP FORWARDING CONFIGURED` and `Remote URL: http://100.x.y.z:8081`.
-   Cell 9 must print the manifest and `WORKER READY FOR LOCAL ACCEPTANCE`.
-7. Return the cell 8 remote URL (contains the Tailscale IP), cell 9 manifest,
+   Code cell 8 must print the manifest and `WORKER READY FOR LOCAL ACCEPTANCE`.
+7. Return the code cell 7 remote URL (contains the Tailscale IP), code cell 8 manifest,
    and confirmation that the bearer token is in the local `.env`. Do not return
    the Tailscale auth key. No manual local harness command is required yet.
 8. Leave the interactive session running for acceptance. **Do not Run All, Save
-   & Run All, rerun cells 2-8, run inference probes, restart the kernel, or run
-   cell 10 while FreeCompute uses the worker.** After acceptance finishes, set
-   `CONFIRM_SHUTDOWN = True`, run cell 10, then click Kaggle **Stop Session**.
+   & Run All, rerun code cells 1-7, run inference probes, restart the kernel, or run
+   code cell 9 while FreeCompute uses the worker.** After acceptance finishes, set
+   `CONFIRM_SHUTDOWN = True`, run code cell 9, then click Kaggle **Stop Session**.
 
 A stopped model or disconnected CLI is not a stopped Kaggle GPU session.
 Account quota/settings/permission and actual tailnet reachability remain external
