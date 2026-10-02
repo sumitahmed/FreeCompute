@@ -1,8 +1,11 @@
 # V2 system architecture
 
-Updated, 2026-10-02. The user authorized the narrow native driver and Stage 3 local runtime. Broader scheduler/GUI/daemon architecture below remains proposed. The pinned SDK was rejected in [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); current acceptance is in [CUSTOM_DRIVER_QUALIFICATION.md](CUSTOM_DRIVER_QUALIFICATION.md) and [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md).
+Updated, 2026-10-02. The user authorized the narrow native driver, Stage 3 runtime and subsequently the bounded V1 engine/worker/queue backend. Broader delegation, advanced scheduling, GUI and daemon architecture below remains proposed. The pinned SDK was rejected in [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); historical Stage 3 acceptance is in [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md), and current V1 evidence is in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md).
 
 ## Implemented Stage 3 slice
+
+This section records the accepted Stage 3 baseline; the bounded V1 additions are
+mapped separately below. Its one-allocation statements are historical to Stage 3.
 
 The actual entry point now constructs `CoreService.from_config` and a
 `harness/cli/core_client.py` presentation adapter. CoreService owns providers,
@@ -44,6 +47,40 @@ subsequently authorized V1 backend adds bounded engine/worker and basic queue
 contracts; evidence is in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md)
 and [V1_SCHEDULER.md](V1_SCHEDULER.md). Broader stages require separate review.
 
+## Implemented V1 backend slice
+
+Core now admits tasks to the same local SQLite authority with atomic queue
+submission. `WorkerRegistry` persists separate worker/profile declarations and
+timestamped health; `Scheduler` enforces eligible FIFO, per-worker concurrency
+and exclusive physical pool/resource claims. `InferenceBroker` records attempt,
+lease and claims before calling the chosen engine. Committed responses release
+capacity; unknown remote outcomes quarantine their leases across restart.
+Reconnection cannot prove them idle. Explicit operator reconciliation releases
+one recorded allocation without executing work.
+
+`engines.py` and `engine_config.py` isolate llama.cpp, generic OpenAI-compatible
+and the existing ComfyUI transport. Profile declarations remain model-specific,
+while one model can serve multiple workers. The CLI's `/workers`, `/models`,
+`/queue`, selection, cancellation and `/run-next` remain in-process Core clients.
+Changing a default never rebinds existing tasks. One local approval/tool loop
+remains sequential; no parallel agents or dispatcher daemon is introduced.
+
+| Added production boundary | Path |
+| --- | --- |
+| Engine adapters/composition | `harness/core/engines.py`, `harness/core/engine_config.py` |
+| Compatible transport | `harness/providers/openai_compatible.py`, existing `harness/core/client.py` |
+| Durable declarations/health | `harness/core/workers.py`, expanded `runtime_models.py` |
+| Queue/capacity/physical claims | `harness/core/scheduler.py`, expanded `inference.py` |
+| Additive schema version 2 | `harness/storage/scheduler_schema.py`, expanded `runtime.py` |
+
+Network credentials/endpoints stay outside persisted descriptors. Generic
+model-list health is not GPU telemetry or tool-template certification. The
+existing Comfy workflow is image only and records a local artifact witness for
+result recovery; it adds no arbitrary checkpoint switching or acknowledged
+remote cancellation. Pool declarations are trusted configuration and do not
+coordinate other workspaces/programs. Current deterministic tests are local
+fixture evidence; hardware/profile/performance acceptance remains unverified.
+
 ## Shape: modular local core, optional daemon
 
 Start with one local Python process and explicit module boundaries. An in-process API supports CLI and tests. Later an authenticated local service exposes the same commands and events to GUI, SDK and automation. Avoid microservices, Redis, an external queue, or a vector database for the first release. Remote services perform inference only.
@@ -70,7 +107,7 @@ flowchart TB
   Engines --> Remote[Local or remote inference workers]
 ```
 
-The diagram shows the broader proposed target, including unimplemented scheduling and clients. In the current slice, CoreService calls brokers; the driver cannot call them. Engine adapters receive model/input/cancellation data, not tool authority. Local Python extensions and approved shell commands remain trusted-host code, not an OS sandbox.
+The diagram shows the broader proposed target. Its basic registry/inference scheduler now exists in the bounded V1 slice; GUI/SDK automation, delegation and distributed scheduling remain proposed. CoreService calls brokers; the driver cannot call them. Engine adapters receive model/input/cancellation data, not tool authority. Local Python extensions and approved shell commands remain trusted-host code, not an OS sandbox.
 
 ## Contracts
 

@@ -29,8 +29,24 @@ under power loss. The historical optional SDK suites remain separately
 documented in `knowledgebase/OPENHANDS_COMPATIBILITY_SPIKE.md` and
 `tests/foundation/README.md`.
 
+The bounded V1 backend adds `test_workers_scheduler.py` for three deterministic
+workers, shared physical claims, FIFO/capacity, health, cancellation and routing;
+`test_scheduler_migration.py` for populated schema-v1 migration/rollback/undo;
+and `test_engine_workers_cli.py` for authenticated loopback compatible/llama
+streaming, negative auth/redirect/timeout cases, ComfyUI artifact recovery and
+actual CLI commands. These run under the complete unit command above.
+
+`test_worker_queue_recovery.py` invokes `worker_queue_process.py` with separate
+processes and `os._exit(73)`. A real durable counter verifies FIFO request counts,
+cancelled work is never dispatched, and an interrupted both-GPU lease survives
+restart without retry until explicit idle reconciliation. Fixtures use temporary
+workspaces outside the repository; no actual GPU is involved.
+
 Package acceptance uses a fresh source snapshot outside the repository,
 `python -m pip wheel --no-deps`, a separate target install, byte comparison of
 every packaged `harness` Python file, installed-module imports, and the actual
 installed `freecompute.exe` against the same loopback edit/test/resume workflow.
 Results and limitations are recorded in `knowledgebase/STAGE3_LOCAL_RUNTIME.md`.
+Fresh V1 results, the expanded package file count and its installed CLI acceptance
+are recorded in `knowledgebase/STAGE4_ENGINE_WORKERS.md`; Stage 3 results remain
+historical rather than being overwritten.

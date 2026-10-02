@@ -2,7 +2,7 @@
 
 Research date: **2026-10-02**. Audited baseline: `main`, `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`.
 
-**Current status:** Stage 1 safety repairs are preserved; the completed pinned OpenHands experiment is **REJECTED** as the general foundation. The subsequently authorized native driver qualified and the bounded Stage 3 local runtime passed 140 unit tests and installed-wheel acceptance. Work stops for branch review. See the records below for evidence and limits. Broader scheduling/delegation, GUI, daemon and real GPU/deployment work remain proposed.
+**Current status:** Stage 1 safety repairs and the **REJECTED** pinned OpenHands experiment are preserved. The qualified native driver and accepted Stage 3 runtime are the baseline for the subsequently authorized minimal V1 engine/worker registry and durable queue/scheduler. Its current implementation, verification and limits are recorded below. This milestone stops for branch review. Delegation, advanced scheduling, GUI, daemon and real GPU/deployment work remain proposed.
 
 Read these in order:
 
@@ -13,6 +13,8 @@ Read these in order:
 | [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md) | Historical SDK experiment/rejection and preserved evidence |
 | [CUSTOM_DRIVER_QUALIFICATION.md](CUSTOM_DRIVER_QUALIFICATION.md) | Native proposal-only foundation and qualification results |
 | [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md) | Actual production boundaries, SQLite/recovery, CLI, tests, limitations |
+| [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md) | Minimal V1 engines, registry, CLI and current local acceptance evidence |
+| [V1_SCHEDULER.md](V1_SCHEDULER.md) | Durable FIFO admission, resources, failure/restart semantics and phase inventory |
 | [FREECOMPUTE_V2_VISION.md](FREECOMPUTE_V2_VISION.md) | Product boundaries, recommended direction, unresolved choices |
 | [CURRENT_ARCHITECTURE_AUDIT.md](CURRENT_ARCHITECTURE_AUDIT.md) | Actual code, defects, evidence strength, components to preserve |
 | [RESEARCH_EVIDENCE.md](RESEARCH_EVIDENCE.md) | Inspection coverage, test/probe results, immutable upstream source inventory |
@@ -32,8 +34,10 @@ The older six knowledge-base documents are historical context. Their completion,
 Evidence vocabulary throughout this set:
 
 - **Observed:** inspected source or executed local fixture result.
+- **Tested:** a specific executed check with its actual result and limits.
 - **Historical:** preserved notebook output or prior user report; not rerun here.
 - **Inference:** a risk deduced from code or documentation, with no live reproduction.
 - **Proposed:** future behavior; not implemented or authorized.
+- **Unverified:** a declaration or compatibility claim without acceptance evidence.
 
-The implemented foundation is a **modular Python local core** with a replaceable narrow native proposal driver. OpenHands remains an optional historical experiment. Authoritative execution, approvals and state stay in FreeCompute. An authenticated daemon, scheduler and reviewed memory services remain later stages.
+The implemented foundation is a **modular Python local core** with a replaceable narrow native proposal driver and minimal SQLite inference scheduler. OpenHands remains an optional historical experiment. Authoritative execution, approvals and state stay in FreeCompute. An authenticated daemon, delegation and reviewed memory services remain later stages.
