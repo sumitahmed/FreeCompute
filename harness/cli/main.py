@@ -21,18 +21,11 @@ if hasattr(sys.stderr, "reconfigure"):
 from harness.config import HarnessConfig
 from harness.cli.formatter import TerminalFormatter, scrubber
 from harness.core.client import AuthenticationError, RemoteBrainUnavailableError
-from harness.core.models import Message
-from harness.core.orchestrator import AgentOrchestrator
-from harness.core.prompt import PromptBuilder
-from harness.providers.base import Capability, UnsupportedCapabilityError
-from harness.providers.llamacpp import LlamaCppProvider
-from harness.providers.comfyui import ComfyUIProvider
+from harness.cli.core_client import CoreClient
+from harness.core.service import CoreService
 from harness.skills.manager import SkillManager
-from harness.storage.journal import TaskJournal
-from harness.storage.undo import UndoManager
 from harness.telemetry.quota_ledger import QuotaLedger
 from harness.telemetry.session_tracker import SessionTracker
-from harness.tools.registry import ToolRegistry
 
 
 def handle_approval_prompt(tool_name: str, args: Dict[str, Any], fmt: TerminalFormatter) -> bool:
@@ -114,12 +107,12 @@ def print_status_telemetry(client: Any, session_tracker: SessionTracker, quota_l
 def run_interactive_repl(
     config: HarnessConfig,
     client: Any,
-    orchestrator: AgentOrchestrator,
-    undo_mgr: UndoManager,
+    orchestrator: CoreClient,
+    undo_mgr: CoreClient,
     skills_mgr: SkillManager,
     session_tracker: SessionTracker,
     quota_ledger: QuotaLedger,
-    comfy_prov: ComfyUIProvider,
+    comfy_prov: CoreClient,
     fmt: TerminalFormatter,
 ):
     """Main interactive REPL loop."""
@@ -147,8 +140,6 @@ def run_interactive_repl(
         health_summary=health_summary,
     )
 
-    history: List[Message] = []
-
     while True:
         try:
             prompt_label = fmt.bold(fmt.cyan("freecompute> "))
@@ -161,6 +152,47 @@ def run_interactive_repl(
             continue
 
         cmd = user_input.lower()
+        resume_session = None
+
+        if cmd == "/sessions":
+            for session in orchestrator.list_sessions():
+                print(f"{session['id']}  {session['status']}  revision={session['revision']}")
+            continue
+        if cmd == "/new":
+            orchestrator.new_session()
+            print("The next prompt will start a new session.")
+            continue
+        if cmd == "/actions":
+            for action in orchestrator.actions():
+                print(f"{action['id']}  {action['name']}  {action['state']}  target={action['target']}  pre={action['pre_hash']}  post={action['post_hash']}")
+            continue
+        if cmd == "/cancel":
+            orchestrator.cancel()
+            print("Local stop requested; remote cancellation is unconfirmed.")
+            continue
+        if cmd == "/reconcile-inference":
+            try:
+                print(orchestrator.reconcile_inference(lambda n, a: handle_approval_prompt(n, a, fmt)))
+            except Exception as exc:
+                print(fmt.red(scrubber.scrub(exc)))
+            continue
+        if cmd.startswith("/reconcile "):
+            parts = user_input.split()
+            if len(parts) not in {3, 4}:
+                print("Usage: /reconcile <action-id> <completed|not_executed> [sha256|absent]")
+                continue
+            try:
+                witness = parts[3] if len(parts) == 4 and parts[3] != "absent" else None
+                print(orchestrator.reconcile(parts[1], parts[2], witness, lambda n, a: handle_approval_prompt(n, a, fmt)))
+            except Exception as exc:
+                print(fmt.red(scrubber.scrub(exc)))
+            continue
+        if cmd.startswith("/resume"):
+            parts = user_input.split()
+            if len(parts) != 2:
+                print("Usage: /resume <session-id>")
+                continue
+            resume_session = parts[1]
 
         # Built-in Slash Commands
         if cmd in ("exit", "quit", "/exit", "/quit"):
@@ -210,7 +242,7 @@ def run_interactive_repl(
             elif res.get("status") == "empty":
                 print(fmt.yellow("No recorded file changes available to undo."))
             else:
-                print(fmt.red(f"Undo failed: {res.get('error')}"))
+                print(fmt.red(f"Undo stopped: {res.get('error') or res.get('message') or res.get('status')}"))
             continue
 
         if cmd in ("/skills", "/skills list"):
@@ -241,6 +273,13 @@ def run_interactive_repl(
             print("  /image <prompt>  Generate an image via ComfyUI (requires image server)")
             print("  /image-server    Set or view ComfyUI image server URL")
             print("  /model           Show active model engine, context window, and endpoint")
+            print("  /sessions        List persisted sessions")
+            print("  /resume <id>     Resume a persisted session without repeating receipts")
+            print("  /new             Start a new conversation on the next prompt")
+            print("  /actions         Inspect recent action IDs and uncertain outcomes")
+            print("  /reconcile       Resolve an uncertain action with an explicit decision")
+            print("  /reconcile-inference  Confirm an uncertain remote allocation is idle")
+            print("  /cancel          Request local stop (Ctrl+C also stops an active task)")
             print("  /clear           Clear the terminal console")
             print("  exit / quit      Exit the CLI")
             print(fmt.dim("  <any prompt>     Execute coding task with sandboxed tools and approval gates\n"))
@@ -251,7 +290,11 @@ def run_interactive_repl(
             parts = user_input.split(maxsplit=1)
             if len(parts) == 2:
                 new_url = parts[1].strip()
-                comfy_prov.server_url = new_url.rstrip("/")
+                try:
+                    comfy_prov.server_url = new_url.rstrip("/")
+                except Exception as exc:
+                    print(fmt.red(scrubber.scrub(exc)))
+                    continue
                 scrubber.register_secret(comfy_prov.server_url)
                 print(fmt.green(f"ComfyUI image server updated to: {scrubber.scrub(comfy_prov.server_url)}"))
             else:
@@ -289,10 +332,10 @@ def run_interactive_repl(
         # Check if the user invoked a registered skill
         target_prompt = user_input
         first_token = user_input.split()[0].lower()
-        active_skill = skills_mgr.get_skill(first_token)
+        active_skill = skills_mgr.get_skill(first_token) if not resume_session else None
         if active_skill:
             skill_args = user_input[len(first_token):].strip()
-            target_prompt = skills_mgr.build_skill_prompt(active_skill, skill_args)
+            target_prompt = skill_args or "Execute the skill workflow on the current project context."
             print(fmt.cyan(f"● [SKILL ACTIVATED] Executing '{active_skill.name}' workflow..."))
 
         # Execute coding / reasoning task
@@ -350,9 +393,7 @@ def run_interactive_repl(
             return handle_approval_prompt(name, args, fmt)
 
         try:
-            result = orchestrator.run_task(
-                user_prompt=target_prompt,
-                conversation_history=history,
+            callbacks = dict(
                 on_token=on_token,
                 on_reasoning=on_reasoning,
                 on_phase_change=on_phase,
@@ -360,7 +401,10 @@ def run_interactive_repl(
                 on_approval_request=approval_callback,
                 on_tool_executed=on_tool_executed,
             )
-            history = result["history"]
+            if resume_session:
+                result = orchestrator.resume(resume_session, **callbacks)
+            else:
+                result = orchestrator.run_task(user_prompt=target_prompt, skill=active_skill, **callbacks)
 
             # Display truthful speed and latency telemetry
             duration = time.time() - turn_start_time
@@ -412,24 +456,18 @@ def _main():
     scrubber.register_secret(config.remote_url)
     scrubber.register_secret(config.image_server_url)
 
-    # Initialize subsystems
+    # Core owns providers, tools, history, permissions and durable state.
     fmt = TerminalFormatter()
-    session_tracker = SessionTracker()
-    quota_ledger = QuotaLedger(storage_path=str(Path(config.journal_dir) / "quota_ledger.json"))
-    journal = TaskJournal(journal_dir=config.journal_dir)
-    undo_mgr = UndoManager(workspace_root=workspace_root, storage_dir=config.journal_dir)
-    skills_mgr = SkillManager(workspace_root=workspace_root)
-    prompt_builder = PromptBuilder()
-    tool_registry = ToolRegistry(workspace_root=workspace_root, undo_manager=undo_mgr)
+    core = CoreService.from_config(config)
+    try:
+        _run_client(args, config, core, fmt)
+    finally:
+        core.close()
 
-    # Model providers
-    llama_prov = LlamaCppProvider(
-        base_url=config.remote_url,
-        api_key=config.api_key,
-        model_alias=config.model_alias,
-        timeout_seconds=config.request_timeout_seconds,
-    )
-    comfy_prov = ComfyUIProvider(server_url=config.image_server_url, workspace_root=workspace_root)
+
+def _run_client(args, config, core, fmt):
+    client = CoreClient(core)
+    session_tracker, quota_ledger = core.session_tracker, core.quota
 
     if args.observe_quota is not None:
         quota_ledger.set_user_observed_balance(args.observe_quota)
@@ -437,7 +475,7 @@ def _main():
 
     # Direct CLI subcommands
     if args.subcommand == "status":
-        print_status_telemetry(llama_prov.client, session_tracker, quota_ledger, fmt)
+        print_status_telemetry(client, session_tracker, quota_ledger, fmt)
         return
 
     if args.subcommand == "image":
@@ -447,34 +485,24 @@ def _main():
         if not prompt_text:
             print("No prompt provided. Exiting.")
             return
-        if not comfy_prov.server_url:
+        if not client.server_url:
             print(fmt.red("Error: ComfyUI server URL not configured. Pass --image-server or set FREECOMPUTE_IMAGE_SERVER."))
             return
         print(f"Generating image for: \"{prompt_text}\"...")
-        res = comfy_prov.generate_image(prompt=prompt_text)
+        res = client.generate_image(prompt=prompt_text)
         print(fmt.green(f"Image saved to: {res['file_path']}"))
         return
 
     # Default interactive REPL
-    orchestrator = AgentOrchestrator(
-        client=llama_prov.client,
-        prompt_builder=prompt_builder,
-        tool_registry=tool_registry,
-        journal=journal,
-        session_tracker=session_tracker,
-        quota_ledger=quota_ledger,
-        undo_manager=undo_mgr,
-    )
-
     run_interactive_repl(
         config=config,
-        client=llama_prov.client,
-        orchestrator=orchestrator,
-        undo_mgr=undo_mgr,
-        skills_mgr=skills_mgr,
+        client=client,
+        orchestrator=client,
+        undo_mgr=client,
+        skills_mgr=core.skills,
         session_tracker=session_tracker,
         quota_ledger=quota_ledger,
-        comfy_prov=comfy_prov,
+        comfy_prov=client,
         fmt=fmt,
     )
 
