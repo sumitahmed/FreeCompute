@@ -5,6 +5,14 @@
 `v2/safety-and-agentdriver-spike`. Stages 1-3 are preserved. This milestone ends
 with branch review; no merge, deployment, daemon or real GPU session.
 
+Implementation acceptance checkpoint:
+[`bec6b21e42e7c80742f2bda61a8936695f4826b4`](https://github.com/sumitahmed/FreeCompute/commit/bec6b21e42e7c80742f2bda61a8936695f4826b4)
+(`feat: checkpoint minimal worker scheduler backend`). Its ancestry preserves the
+implementation/test timestamp checkpoints and all accepted Stage 1-3 milestones;
+none were rewritten. A following documentation checkpoint records this pointer.
+Local and remote `main` were checked at
+`1300566dca62a0f804487e7101767e688e551184` before branch finalization.
+
 ## Implemented boundaries — Observed
 
 ```mermaid
