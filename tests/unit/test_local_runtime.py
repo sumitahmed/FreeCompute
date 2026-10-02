@@ -402,6 +402,38 @@ class LocalRuntimeTests(unittest.TestCase):
         manager = SkillManager(str(self.workspace), str(self.base / "missing-user"))
         self.assertIn("Invalid skill", manager.format_skills_list())
 
+    def test_image_facade_uses_single_allocation_and_retains_completed_session(self):
+        from harness.cli.core_client import CoreClient
+        core = self.start()
+        class ImageFixture:
+            server_url = "http://127.0.0.1:1"
+            calls = 0
+            def generate_image(provider, prompt):
+                self.assertEqual(core.inference.allocation()["state"], "active")
+                provider.calls += 1
+                target = self.workspace / "image.png"
+                target.write_bytes(b"fixture image bytes")
+                return {"file_path": str(target), "job_id": "fixture-job"}
+        provider = ImageFixture()
+        core.image_provider = provider
+        client = CoreClient(core)
+        result = client.generate_image("fixture image")
+        self.assertTrue(Path(result["file_path"]).is_file())
+        self.assertEqual(provider.calls, 1)
+        session = core.list_sessions()[0]
+        self.assertEqual(core.resume(session["id"])["status"], "completed")
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(core.inference.allocation()["state"], "idle")
+        with self.assertRaises(ValueError):
+            client.server_url = "file:///outside"
+        core._run_lock.acquire()
+        try:
+            with self.assertRaises(RuntimeError):
+                client.generate_image("second")
+        finally:
+            core._run_lock.release()
+        self.assertEqual(provider.calls, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -82,6 +82,9 @@ class CoreClient:
     def get_health(self):
         return self._core.get_health()
 
+    def model_info(self):
+        return self._core.model_info()
+
     def get_last_diff(self):
         return self._core.get_last_diff()
 

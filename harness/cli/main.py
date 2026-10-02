@@ -250,11 +250,14 @@ def run_interactive_repl(
             continue
 
         if cmd == "/model":
+            active_model = orchestrator.model_info()
             print(fmt.cyan("\n--- ACTIVE MODEL CONFIGURATION ---"))
-            print(f"Model Alias     : {config.model_alias}")
-            print(f"Max Context     : {config.max_context_tokens} tokens")
+            print(f"Model Alias     : {active_model['model']}")
+            print(f"Max Context     : {active_model['context_capacity']} tokens (declared)")
+            print(f"Reserved Output : {active_model['reserved_completion']} tokens")
+            print(f"Allocation      : {active_model['allocation']['state']}")
             print(f"Remote Endpoint : {scrubber.scrub(config.remote_url)}")
-            print(f"Image Server    : {scrubber.scrub(config.image_server_url) or 'Not configured'}")
+            print(f"Image Server    : {scrubber.scrub(comfy_prov.server_url) or 'Not configured'}")
             print(f"Transport Mode  : {config.transport}")
             print(fmt.cyan("-" * 34))
             continue

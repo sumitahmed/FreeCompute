@@ -15,7 +15,7 @@ from harness.core.tool_broker import DurableToolBroker, OutcomeUnknown
 from harness.security import scrubber
 from harness.skills.manager import SkillManager
 from harness.storage.artifacts import ArtifactManager
-from harness.storage.runtime import RuntimeStore, encode, fingerprint, identity
+from harness.storage.runtime import RuntimeStore, encode, fingerprint, identity, timestamp
 from harness.tools.registry import ToolDefinition, ToolRegistry
 
 
@@ -353,6 +353,12 @@ class CoreService:
         session = self.store.one("SELECT * FROM sessions WHERE id=?", (session_id,))
         if not session or not session["current_task_id"]:
             raise ValueError("Unknown session or no task to resume")
+        command = self.store.one("SELECT operation FROM commands WHERE task_id=?", (session["current_task_id"],))
+        if command and command["operation"] == "image":
+            task = self.task(session["current_task_id"])
+            if task["state"] in TERMINAL:
+                return self._summary(task["id"])
+            raise ValueError("Interrupted image job has no confirmed task receipt; inspect the provider job and reconcile inference capacity before a new request")
         return self.run(session["current_task_id"], approval_resolver=approval_resolver)
 
     def cancel(self):
@@ -393,8 +399,12 @@ class CoreService:
         if self.session_tracker:
             self.session_tracker.update_from_remote_health(health.raw)
         with self.store.transaction() as db:
-            db.execute("INSERT OR REPLACE INTO metadata VALUES('worker_observation',?)", (encode({"status": health.status, "resources": health.raw}),))
+            db.execute("INSERT OR REPLACE INTO metadata VALUES('worker_observation',?)", (encode({"status": health.status, "resources": health.raw,
+                "observed_at": timestamp(), "source": "attached engine health"}),))
         return health
+
+    def model_info(self):
+        return dict(self.profile.to_dict(), allocation=self.inference.allocation(), worker_location=self.worker.location)
 
     def select_profile(self, profile):
         if self._run_lock.locked() or self.inference.allocation()["state"] != "idle":

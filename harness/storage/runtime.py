@@ -144,8 +144,12 @@ class RuntimeStore:
         self.db = None
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
+            if os.name != "nt":
+                self.directory.chmod(0o700)
             self.db = sqlite3.connect(self.directory / "runtime.sqlite3", isolation_level=None, check_same_thread=False)
             self.db.row_factory = sqlite3.Row
+            if os.name != "nt":
+                (self.directory / "runtime.sqlite3").chmod(0o600)
             self.db.execute("PRAGMA foreign_keys=ON")
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("PRAGMA synchronous=FULL")
