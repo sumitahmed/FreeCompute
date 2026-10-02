@@ -57,6 +57,8 @@ class StreamChunk:
     finish_reason: Optional[str] = None
     is_first_token: bool = False
     ttft_ms: Optional[float] = None
+    usage: Optional[Dict[str, Any]] = None
+    stream_complete: bool = False
 
 
 @dataclass

@@ -3,6 +3,9 @@ harness/core/client.py — Authenticated Streaming Client to Kaggle Supervisor.
 Handles Bearer auth, SSE chunk parsing, TTFT calculation, structured tool calls, and cancellation.
 """
 
+from harness.security import scrubber, StreamRedactor
+import socket
+import threading
 import json
 import time
 import urllib.error
@@ -25,14 +28,34 @@ class RemoteBrainUnavailableError(Exception):
 
 class CancellationToken:
     def __init__(self):
-        self._cancelled = False
+        self._requested = threading.Event()
+        self.local_stop_confirmed = False
+        self.remote_cancel_confirmed = False
+        self._interrupt = None
 
     def cancel(self):
-        self._cancelled = True
+        self._requested.set()
+        if self._interrupt:
+            self._interrupt()
+
+    def attach_response(self, response):
+        def interrupt():
+            try:
+                response.fp.raw._sock.shutdown(socket.SHUT_RDWR)
+            except (AttributeError, OSError):
+                pass
+        self._interrupt = interrupt
+        if self.is_cancelled:
+            interrupt()
 
     @property
-    def is_cancelled(self) -> bool:
-        return self._cancelled
+    def is_cancelled(self):
+        return self._requested.is_set()
+
+    def summary(self):
+        return {"requested": self.is_cancelled, "local_stop_confirmed": self.local_stop_confirmed,
+                "remote_cancel_confirmed": self.remote_cancel_confirmed,
+                "remote_outcome": "unknown" if self.is_cancelled else "not_requested"}
 
 
 class KaggleBrainClient:
@@ -45,6 +68,8 @@ class KaggleBrainClient:
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        scrubber.register_secret(api_key)
+        scrubber.register_secret(self.base_url)
         self.model_alias = model_alias
         self.timeout_seconds = timeout_seconds
 
@@ -83,14 +108,14 @@ class KaggleBrainClient:
                     max_session_s=data.get("maxSessionSeconds", 43200.0),
                     seconds_remaining_12h=data.get("secondsRemainingIn12hSession", 43200.0),
                     gpus=gpus,
-                    raw=data,
+                    raw=scrubber.structured(data),
                 )
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise AuthenticationError(f"Authentication failed ({exc.code}): Check your API key.")
             raise RemoteBrainUnavailableError(f"HTTP error from Kaggle brain: {exc.code} {exc.reason}")
         except Exception as exc:
-            raise RemoteBrainUnavailableError(f"Cannot connect to Kaggle supervisor at {self.base_url}: {str(exc)}")
+            raise RemoteBrainUnavailableError(scrubber.scrub(f"Cannot connect to Kaggle supervisor at {self.base_url}: {exc}"))
 
     def stream_chat(
         self,
@@ -118,14 +143,21 @@ class KaggleBrainClient:
         if tool_choice:
             payload["tool_choice"] = tool_choice
 
-        body = json.dumps(payload).encode("utf-8")
+        body = json.dumps(scrubber.structured(payload)).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=self._get_headers(), method="POST")
 
         start_time = time.monotonic()
         first_token_received = False
+        text_redactor, reasoning_redactor = StreamRedactor(), StreamRedactor()
+        if cancellation_token and cancellation_token.is_cancelled:
+            cancellation_token.local_stop_confirmed = True
+            return
 
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                if cancellation_token:
+                    cancellation_token.attach_response(resp)
+                completed = False
                 for raw_line in resp:
                     if cancellation_token and cancellation_token.is_cancelled:
                         break
@@ -136,10 +168,13 @@ class KaggleBrainClient:
                     if line.startswith("data: "):
                         data_str = line[6:].strip()
                         if data_str == "[DONE]":
+                            completed = True
+                            yield StreamChunk(delta_content=text_redactor.finish(), delta_reasoning=reasoning_redactor.finish(), stream_complete=True)
                             break
                         try:
                             data = json.loads(data_str)
-                            choice = data.get("choices", [{}])[0]
+                            choices = data.get("choices") or [{}]
+                            choice = choices[0]
                             delta = choice.get("delta", {})
                             finish_reason = choice.get("finish_reason")
                             reasoning = delta.get("reasoning_content") or ""
@@ -154,15 +189,18 @@ class KaggleBrainClient:
                                 ttft_ms = round((time.monotonic() - start_time) * 1000.0, 1)
 
                             yield StreamChunk(
-                                delta_content=content,
-                                delta_reasoning=reasoning,
+                                delta_content=text_redactor.feed(content),
+                                delta_reasoning=reasoning_redactor.feed(reasoning),
+                                usage=data.get("usage"),
                                 tool_call_deltas=tool_calls,
                                 finish_reason=finish_reason,
                                 is_first_token=is_first,
                                 ttft_ms=ttft_ms,
                             )
-                        except json.JSONDecodeError:
-                            continue
+                        except json.JSONDecodeError as exc:
+                            raise ValueError("Malformed SSE JSON; no tools may execute") from exc
+                if not completed and not (cancellation_token and cancellation_token.is_cancelled):
+                    raise ValueError("Incomplete inference stream")
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise AuthenticationError(f"Authentication rejected by Kaggle supervisor: HTTP {exc.code}")
@@ -170,7 +208,12 @@ class KaggleBrainClient:
         except Exception as exc:
             if cancellation_token and cancellation_token.is_cancelled:
                 return
-            raise RemoteBrainUnavailableError(f"Connection stream failed: {str(exc)}")
+            raise RemoteBrainUnavailableError(scrubber.scrub(f"Connection stream failed: {exc}"))
+
+        finally:
+            if cancellation_token:
+                cancellation_token._interrupt = None
+                cancellation_token.local_stop_confirmed = cancellation_token.is_cancelled
 
     def stream_chat_completion(
         self,

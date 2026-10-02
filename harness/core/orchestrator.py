@@ -3,6 +3,7 @@ harness/core/orchestrator.py — Autonomous Coding Agent Orchestration Loop.
 Manages multi-turn task execution, streaming, tool approval gates, and state persistence.
 """
 
+from harness.security import scrubber, StreamRedactor
 import json
 import time
 import uuid
@@ -37,6 +38,8 @@ class AgentOrchestrator:
         self.quota = quota_ledger
         self.max_turns = max_turns_per_task
         self.undo = undo_manager
+        if undo_manager is not None:
+            self.tools.undo_manager = undo_manager
         self.cancellation_token = CancellationToken()
 
     def run_task(
@@ -59,7 +62,7 @@ class AgentOrchestrator:
         history = list(conversation_history) if conversation_history else []
 
         # Start session tracking
-        self.session_tracker.mark_connected()
+        user_prompt = scrubber.scrub(user_prompt)
         self.quota.start_session()
         self.cancellation_token = CancellationToken()
 
@@ -73,14 +76,18 @@ class AgentOrchestrator:
         if on_phase_change:
             on_phase_change("started", f"Starting task: {user_prompt[:80]}")
 
+        status = "budget_exhausted"
+        usage = None
+        ttft_ms = None
         turn_count = 0
         final_answer = ""
 
         try:
             while turn_count < self.max_turns:
                 if self.cancellation_token.is_cancelled:
+                    status = "cancel_requested"
                     if on_phase_change:
-                        on_phase_change("cancelled", "Task cancelled by user.")
+                        on_phase_change("cancel_requested", "Local stop requested; remote outcome unknown.")
                     self.journal.record_event(run_id, "task_cancelled", {"turns": turn_count})
                     break
 
@@ -94,6 +101,9 @@ class AgentOrchestrator:
 
                 # 2. Stream completions from Kaggle brain
                 accumulated_text = ""
+                text_output, reasoning_output = StreamRedactor(), StreamRedactor()
+                completed = False
+                truncated = False
                 accumulated_tool_calls: Dict[int, Dict[str, Any]] = {}
 
                 for chunk in self.client.stream_chat(
@@ -101,13 +111,22 @@ class AgentOrchestrator:
                     tools=tool_schemas,
                     cancellation_token=self.cancellation_token,
                 ):
-                    if chunk.delta_reasoning and on_reasoning:
-                        on_reasoning(chunk.delta_reasoning)
+                    self.session_tracker.mark_connected()
+                    completed = completed or chunk.stream_complete or chunk.finish_reason in {"stop", "tool_calls"}
+                    truncated = truncated or chunk.finish_reason in {"length", "content_filter"}
+                    if chunk.usage:
+                        usage = chunk.usage
+                    if ttft_ms is None and chunk.ttft_ms is not None:
+                        ttft_ms = chunk.ttft_ms
+                    reasoning = reasoning_output.feed(chunk.delta_reasoning)
+                    if reasoning and on_reasoning:
+                        on_reasoning(reasoning)
 
                     if chunk.delta_content:
                         accumulated_text += chunk.delta_content
-                        if on_token:
-                            on_token(chunk.delta_content)
+                        clean = text_output.feed(chunk.delta_content)
+                        if on_token and clean:
+                            on_token(clean)
 
                     if chunk.tool_call_deltas:
                         for tc_delta in chunk.tool_call_deltas:
@@ -123,6 +142,22 @@ class AgentOrchestrator:
                                 accumulated_tool_calls[idx]["name"] += fn["name"]
                             if "arguments" in fn and fn["arguments"]:
                                 accumulated_tool_calls[idx]["arguments"] += fn["arguments"]
+
+                clean = text_output.finish()
+                reasoning = reasoning_output.finish()
+                if not self.cancellation_token.is_cancelled:
+                    if on_token and clean:
+                        on_token(clean)
+                    if on_reasoning and reasoning:
+                        on_reasoning(reasoning)
+                accumulated_text = scrubber.scrub(accumulated_text)
+                if self.cancellation_token.is_cancelled:
+                    status = "cancel_requested"
+                    break
+                if truncated or not completed:
+                    status = "incomplete"
+                    self.journal.record_event(run_id, "incomplete_stream", {})
+                    break
 
                 # 3. Process result
                 # Case A: Model called tools
@@ -155,34 +190,17 @@ class AgentOrchestrator:
                         try:
                             args_dict = json.loads(args_str)
                         except json.JSONDecodeError:
-                            args_dict = {}
+                            args_dict = None
 
                         if on_tool_proposed:
-                            on_tool_proposed(tool_name, args_dict)
+                            on_tool_proposed(scrubber.scrub(tool_name), scrubber.structured(args_dict))
 
-                        # Check approval gate
-                        approved = True
-                        if self.tools.is_approval_required(tool_name):
-                            if on_phase_change:
-                                on_phase_change("awaiting_approval", f"Awaiting approval for {tool_name}")
-                            if on_approval_request:
-                                approved = on_approval_request(tool_name, args_dict)
-                            else:
-                                approved = True  # Default to auto-approve if no handler registered
-
-                        if approved:
-                            if on_phase_change:
-                                on_phase_change("executing_tool", f"Executing {tool_name}...")
-                            if self.undo and tool_name in ("write_file", "edit_file"):
-                                target_path = args_dict.get("path")
-                                if target_path:
-                                    try:
-                                        self.undo.record_pre_change(target_path, operation=tool_name)
-                                    except Exception:
-                                        pass
-                            result = self.tools.execute(tool_name, args_dict)
-                        else:
-                            result = {"status": "rejected", "message": "User declined approval for this tool call."}
+                        if on_phase_change:
+                            on_phase_change("executing_tool", scrubber.scrub(f"Proposed {tool_name}"))
+                        result = self.tools.execute(tool_name, args_dict,
+                                                    approval_callback=on_approval_request,
+                                                    cancellation_token=self.cancellation_token)
+                        approved = result.get("status") != "rejected" and "error" not in result
 
                         if on_tool_executed:
                             on_tool_executed(tool_name, result)
@@ -202,9 +220,10 @@ class AgentOrchestrator:
                             content=json.dumps(result, ensure_ascii=False),
                         )
                         history.append(tool_msg)
+                        tc.function.arguments = scrubber.scrub(tc.function.arguments)
 
                     # Save intermediate checkpoint
-                    self.journal.save_checkpoint(run_id, {"turn": turn_count, "history_len": len(history)})
+                    self.journal.save_checkpoint(run_id, {"turn": turn_count, "history_len": len(history), "history": [m.to_dict() for m in history]})
 
                 # Case B: Model returned direct text response (Done)
                 else:
@@ -223,6 +242,7 @@ class AgentOrchestrator:
                             "model output error: model output must contain either output text "
                             "or tool calls, these cannot both be empty, please try again"
                         )
+                    status = "completed"
                     final_answer = accumulated_text
                     assistant_msg = Message(role="assistant", content=accumulated_text)
                     history.append(assistant_msg)
@@ -231,10 +251,18 @@ class AgentOrchestrator:
                     self.journal.record_event(run_id, "task_completed", {"finalAnswer": final_answer[:300]})
                     break
 
+        except Exception as exc:
+            self.journal.record_event(run_id, "task_failed", {"error": scrubber.scrub(exc)})
+            raise RuntimeError(scrubber.scrub(exc)) from None
         finally:
             self.quota.stop_session()
+            self.cancellation_token.local_stop_confirmed = self.cancellation_token.is_cancelled
 
         return {
+            "status": status,
+            "usage": usage,
+            "ttft_ms": ttft_ms,
+            "cancellation": self.cancellation_token.summary(),
             "run_id": run_id,
             "turns": turn_count,
             "final_answer": final_answer,
