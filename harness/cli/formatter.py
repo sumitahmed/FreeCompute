@@ -9,51 +9,7 @@ import time
 from typing import Any, Dict, List, Optional, Set
 
 
-class SecretScrubber:
-    """
-    Scans text streams, logs, and exception messages to redact sensitive credentials,
-    tokens, and private URLs before display or persistence.
-    """
-
-    DEFAULT_PATTERNS = [
-        # Bearer tokens (JWTs, hex, standard API keys)
-        (re.compile(r"(Bearer\s+)[A-Za-z0-9_\-\.]{8,}", re.IGNORECASE), r"\1[REDACTED_TOKEN]"),
-        # Tailscale ephemeral auth keys
-        (re.compile(r"tskey-auth-[A-Za-z0-9_\-]+", re.IGNORECASE), "[REDACTED_TAILSCALE_KEY]"),
-        # Standard sk-... style secret keys
-        (re.compile(r"sk-[A-Za-z0-9_\-]{8,}", re.IGNORECASE), "[REDACTED_SECRET_KEY]"),
-        # Cloudflare tunnel URLs with ephemeral domains (replace specific domain with placeholder)
-        (re.compile(r"https?://[a-zA-Z0-9\-]+\.trycloudflare\.com", re.IGNORECASE), "https://[tunnel].trycloudflare.com"),
-    ]
-
-    def __init__(self):
-        self._exact_secrets: Set[str] = set()
-
-    def register_secret(self, secret: Optional[str]):
-        """Register a known confidential string (e.g. configured API key or private URL)."""
-        if secret and len(secret.strip()) >= 4:
-            self._exact_secrets.add(secret.strip())
-
-    def scrub(self, text: Any) -> str:
-        """Sanitize text by redacting all known secrets and pattern matches."""
-        if text is None:
-            return ""
-        s = str(text)
-
-        # 1. Exact string matches
-        for secret in self._exact_secrets:
-            if secret in s:
-                s = s.replace(secret, "[REDACTED_SECRET]")
-
-        # 2. Regex pattern matches
-        for pattern, replacement in self.DEFAULT_PATTERNS:
-            s = pattern.sub(replacement, s)
-
-        return s
-
-
-# Global default scrubber singleton
-scrubber = SecretScrubber()
+from harness.security import SecretScrubber, scrubber, safe_print as print
 
 
 class TerminalFormatter:
@@ -87,6 +43,7 @@ class TerminalFormatter:
             self.use_colors = use_colors
 
     def _c(self, code: str, text: str) -> str:
+        text = scrubber.scrub(text)
         if not self.use_colors:
             return text
         return f"{code}{text}{self.RESET}"
@@ -221,8 +178,8 @@ class TerminalFormatter:
         else:
             print(f"● {self.green('[SUCCESS]')}: {tool_name} completed successfully.")
 
-    def print_streaming_stats(self, ttft_ms: float, total_tokens: int, duration_sec: float):
+    def print_streaming_stats(self, ttft_ms: float, total_tokens: Optional[int], duration_sec: float):
         """Print inference telemetry (TTFT, tokens, speed) cleanly."""
-        tok_sec = (total_tokens / duration_sec) if duration_sec > 0 else 0.0
-        stats = f"TTFT: {ttft_ms:.0f}ms | Tokens: {total_tokens} | Speed: {tok_sec:.1f} tok/s | Elapsed: {duration_sec:.1f}s"
-        print(f"\n{self.dim('⚡ [' + stats + ']')}")
+        tokens = str(total_tokens) if total_tokens is not None else "unknown"
+        stats = f"TTFT: {ttft_ms:.0f}ms | Server tokens: {tokens} | Task elapsed: {duration_sec:.1f}s"
+        print(f"\n{self.dim(stats)}")
