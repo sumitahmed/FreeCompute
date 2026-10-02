@@ -33,7 +33,7 @@ class ProtocolServer(legacy.Supervisor):
             if self.path.startswith("/comfy/view"):
                 self.wfile.write(PNG)
             elif self.path.startswith("/comfy/history/"):
-                self.wfile.write(json.dumps({"fixture-job": {"outputs": {"13": {"images": [{"filename": "fixture.png", "type": "output", "subfolder": ""}]}}}}).encode())
+                self.wfile.write(json.dumps({"fixture-job": {"outputs": {"9": {"images": [{"filename": "fixture.png", "type": "output", "subfolder": ""}]}}}}).encode())
             else:
                 self.wfile.write(json.dumps({"devices": [{"index": 0, "name": "fixture GPU", "vram_total": 1024, "vram_free": 512}]}).encode())
             return
@@ -152,7 +152,7 @@ class EngineAndCliTests(unittest.TestCase):
         adapter = core.registry.engine("local-small")
         self.assertFalse(adapter.describe()["remote_cancel_ack"])
         self.assertEqual(adapter.get_capabilities(), frozenset({"text"}))
-        self.assertEqual(core.list_workers()[1]["health"], "healthy")
+        self.assertEqual(next(w for w in core.list_workers() if w["worker_id"] == "local-small")["health"], "healthy")
         self.assertNotIn(TOKEN, json.dumps(core.store.all("SELECT * FROM workers")))
 
     def test_auth_rejection_before_model_dispatch_does_not_claim_success(self):
@@ -213,6 +213,7 @@ class EngineAndCliTests(unittest.TestCase):
         result = core.generate_image("fixture")
         self.assertEqual(Path(result["file_path"]).read_bytes(), PNG)
         self.assertEqual(self.server.image_jobs, 1)
+        self.assertEqual(result["prompt_id"], "fixture-job")
         self.assertEqual(core.inference.allocation()["state"], "idle")
         self.assertEqual(core.store.all("SELECT * FROM resource_claims"), [])
         adapter = core.registry.engine("image-worker")
