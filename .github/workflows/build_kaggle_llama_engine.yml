@@ -1,0 +1,50 @@
+name: Build pinned Kaggle llama engine
+
+on:
+  push:
+    branches: [v2/safety-and-agentdriver-spike]
+    paths: [.github/workflows/build_kaggle_llama_engine.yml]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    container: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git cmake ninja-build g++
+      - name: Build the acceptance pin for T4
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init llama.cpp
+          git -C llama.cpp remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C llama.cpp fetch --depth 1 origin 2b129ccfa03aea330d2d9ac4650a10de393dbe3a
+          git -C llama.cpp checkout --detach FETCH_HEAD
+          test "$(git -C llama.cpp rev-parse HEAD)" = 2b129ccfa03aea330d2d9ac4650a10de393dbe3a
+          cmake -S llama.cpp -B build -G Ninja \
+            -DGGML_CUDA=ON -DGGML_CUDA_NO_VMM=ON \
+            -DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_BUILD_TYPE=Release \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
+          cmake --build build --target llama-server --parallel 2
+          build/bin/llama-server --version
+          mkdir -p engine
+          cp -a build/bin/. engine/
+          for library in libcudart.so.12 libcublas.so.12 libcublasLt.so.12; do
+            source=$(find /usr/local/cuda -name "$library" -print -quit)
+            test -n "$source"
+            cp -L "$source" "engine/$library"
+          done
+          tar -czf kaggle-llama-b11206-sm75-ubuntu22.tar.gz engine
+          sha256sum kaggle-llama-b11206-sm75-ubuntu22.tar.gz > engine.sha256
+          cat engine.sha256
+      - name: Upload engine and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaggle-llama-b11206-sm75-ubuntu22
+          path: |
+            kaggle-llama-b11206-sm75-ubuntu22.tar.gz
+            engine.sha256
+          retention-days: 7
