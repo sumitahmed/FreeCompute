@@ -1,5 +1,12 @@
 # V1 durable inference queue and scheduler
 
+For the pending real dual-T4 acceptance, declare `kaggle-qwen` with concurrency 1
+and exclusive `gpu0` + `gpu1` in pool `kaggle-dual-t4`. The notebook startup and
+private Tailscale procedure are in
+[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Real queue/resource,
+stale-health, reconnect and cancellation behavior remains unverified; this
+preparation does not change scheduler semantics or release quarantined leases.
+
 2026-10-02. Authorized minimal backend continuation after Stage 3; no delegation,
 GUI, daemon, advanced scheduling, Redis or distributed coordination.
 

@@ -1,5 +1,12 @@
 # V1 engine and worker backend
 
+Real-worker preparation, 2026-10-02: use the feature branch's corrected
+`kaggle/freecompute_dual_gpu_server.ipynb` and the exact manual procedure in
+[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Both server wrappers
+are synchronized; historical proof output is preserved. Preparation does not
+start a GPU session or certify streaming/model behavior. Real results remain
+unverified until the user returns the private Tailscale endpoint.
+
 2026-10-02. Authorized continuation from Stage 3 acceptance
 `aa15fc9fa87c45624acfc8eaf1aa5795f6603578` on
 `v2/safety-and-agentdriver-spike`. Stages 1-3 are preserved. This milestone ends

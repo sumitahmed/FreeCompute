@@ -1,5 +1,11 @@
 # V2 staged roadmap and review decisions
 
+Subsequent V1 real-acceptance preparation is authorized separately from the
+bounded backend milestone below. The notebook preflight fixes and exact manual
+procedure are in [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md).
+No GPU quota has been consumed in preparation; real results and GUI readiness
+remain unverified until the user supplies the manually started worker endpoint.
+
 Updated, 2026-10-02. **The user authorized Stages 1-3 and subsequently a bounded V1 backend slice: engines, worker/model registry, basic durable FIFO queue and resource accounting. Delegation, advanced memory/automation/scheduling, GUI, daemon, deployment, GPU sessions, merge and PR remain outside this milestone.** Older completion claims are historical.
 
 ## Recorded progress ? 2026-10-02
