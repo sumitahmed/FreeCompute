@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+from harness.security import scrubber
 from harness.tools.sandbox import validate_workspace_path, SandboxSecurityViolation
 
 # Commands that are blocked outright for basic system safety
@@ -23,6 +24,7 @@ def run_command(
     cwd: Optional[str] = None,
     timeout_seconds: int = 60,
     workspace_root: str = ".",
+    cancellation_token=None,
 ) -> Dict[str, Any]:
     """
     Run a terminal command securely within the workspace.
@@ -38,35 +40,34 @@ def run_command(
         raise NotADirectoryError(f"Working directory does not exist: '{working_dir}'")
 
     start_time = time.monotonic()
-    try:
-        proc = subprocess.run(
-            command,
-            cwd=str(working_dir),
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            errors="replace",
-        )
-        duration_ms = round((time.monotonic() - start_time) * 1000.0, 1)
-
-        return {
-            "command": command,
-            "cwd": str(working_dir.relative_to(Path(workspace_root).resolve())),
-            "exit_code": proc.returncode,
-            "stdout": proc.stdout[-8000:] if len(proc.stdout) > 8000 else proc.stdout,
-            "stderr": proc.stderr[-8000:] if len(proc.stderr) > 8000 else proc.stderr,
-            "duration_ms": duration_ms,
-            "timed_out": False,
-        }
-    except subprocess.TimeoutExpired as exc:
-        duration_ms = round((time.monotonic() - start_time) * 1000.0, 1)
-        return {
-            "command": command,
-            "cwd": str(working_dir.relative_to(Path(workspace_root).resolve())),
-            "exit_code": -1,
-            "stdout": exc.stdout if isinstance(exc.stdout, str) else "",
-            "stderr": f"Command timed out after {timeout_seconds} seconds.",
-            "duration_ms": duration_ms,
-            "timed_out": True,
-        }
+    if cancellation_token and cancellation_token.is_cancelled:
+        return {"status": "rejected", "message": "Cancellation requested before subprocess start"}
+    with subprocess.Popen(command, cwd=str(working_dir), shell=True, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, text=True, errors="replace") as process:
+        timed_out = False
+        requested = False
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=0.1)
+                break
+            except subprocess.TimeoutExpired:
+                requested = bool(cancellation_token and cancellation_token.is_cancelled)
+                timed_out = time.monotonic() - start_time >= timeout_seconds
+                if requested or timed_out:
+                    process.kill()
+                    # A descendant can retain pipe handles. Never wait indefinitely
+                    # or claim killing the shell confirmed the entire process tree.
+                    try:
+                        stdout, stderr = process.communicate(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        stdout, stderr = "", "Output pipes still held by descendants"
+                        process.stdout.close()
+                        process.stderr.close()
+                    process.wait(timeout=1)
+                    break
+        return scrubber.structured({"command": command, "cwd": str(working_dir.relative_to(Path(workspace_root).resolve())),
+                "exit_code": -1 if timed_out else process.returncode, "stdout": stdout[-8000:],
+                "stderr": f"Command timed out after {timeout_seconds} seconds." if timed_out else stderr[-8000:],
+                "duration_ms": round((time.monotonic() - start_time) * 1000, 1), "timed_out": timed_out,
+                "cancellation_requested": requested, "owned_process_exit_confirmed": process.poll() is not None,
+                "descendant_cancellation": "unknown" if requested or timed_out else "not_requested"})

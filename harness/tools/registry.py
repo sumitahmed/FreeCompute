@@ -295,6 +295,8 @@ class ToolRegistry:
                 validate_workspace_path(arguments["path"], self.workspace_root, True)
                 if file_hash(target) != before:
                     raise ValueError("File changed during approval")
+            if tool_name == "run_command":
+                return terminal.run_command(**arguments, workspace_root=self.workspace_root, cancellation_token=cancellation_token)
             return scrubber.structured(tool.handler(**arguments))
         except Exception as exc:
             return {"error": scrubber.scrub(f"Tool execution failed: {type(exc).__name__}: {exc}")}
