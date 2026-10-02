@@ -20,6 +20,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 from harness.security import safe_print as print, scrubber
+from harness.tools.sandbox import validate_workspace_path
 import argparse
 import asyncio
 import json
@@ -64,6 +65,7 @@ def save_server_url(url: str):
 class ImageHarnessSession:
     def __init__(self, server_url: str):
         self.server_url = server_url.rstrip("/")
+        scrubber.register_secret(self.server_url)
         self.width = 768
         self.height = 768
         self.steps = 8
@@ -77,6 +79,7 @@ class ImageHarnessSession:
             print("  [ERROR] URL must start with http:// or https://")
             return False
         self.server_url = cleaned
+        scrubber.register_secret(cleaned)
         save_server_url(cleaned)
         print(f"  [OK] Server URL updated & saved: {self.server_url}")
         return True
@@ -197,6 +200,7 @@ class ImageHarnessSession:
         print("-" * 60 + "\n")
 
     def upload_image(self, image_path: Path) -> str:
+        image_path = validate_workspace_path(str(image_path))
         print(f"  [>] Uploading reference image: {image_path.name}...")
         boundary = "----WebKitFormBoundary" + str(random.randint(100000, 999999))
         with open(image_path, "rb") as f:
@@ -231,8 +235,8 @@ class ImageHarnessSession:
             "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": "qwen-image-2.1-UC-Q4_K_M.gguf"}},
             "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen3vl_8b_int8_convrot.safetensors", "type": "qwen_image"}},
             "3": {"class_type": "VAELoader", "inputs": {"vae_name": "qwen_image_2.1_vae_bf16.safetensors"}},
-            "4": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
-            "5": {"class_type": "CLIPTextEncode", "inputs": {"text": negative_prompt, "clip": ["2", 0]}},
+            "4": {"class_type": "CLIPTextEncode", "inputs": {"text": scrubber.scrub(prompt), "clip": ["2", 0]}},
+            "5": {"class_type": "CLIPTextEncode", "inputs": {"text": scrubber.scrub(negative_prompt), "clip": ["2", 0]}},
             "7": {"class_type": "KSampler", "inputs": {"seed": sd, "steps": s, "cfg": c, "sampler_name": "euler", "scheduler": "normal", "denoise": d, "model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["6", 0]}},
             "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
             "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "QwenImage", "images": ["8", 0]}}
@@ -249,7 +253,7 @@ class ImageHarnessSession:
     async def execute_generation(self, prompt, negative="", width=None, height=None, steps=None, cfg=None, image_path=None, denoise=None, custom_out=None):
         uploaded_name = None
         if image_path:
-            p = Path(image_path)
+            p = validate_workspace_path(image_path)
             if not p.exists():
                 print(f"  [ERROR] Image not found: {p}")
                 return
@@ -296,6 +300,8 @@ class ImageHarnessSession:
                 with urllib.request.urlopen(req) as resp:
                     res = json.loads(resp.read().decode("utf-8"))
                     prompt_id = res.get("prompt_id")
+                    if not isinstance(prompt_id, str) or not prompt_id:
+                        raise ValueError("ComfyUI did not return a job ID")
                     print(f"  [OK] Prompt Queued! Task ID: {prompt_id}\n")
 
                 print("  " + "-" * 72)
@@ -304,12 +310,20 @@ class ImageHarnessSession:
 
                 start_t = time.time()
                 while True:
-                    msg = await ws.recv()
+                    remaining = 1800 - (time.time() - start_t)
+                    if remaining <= 0:
+                        raise TimeoutError("Image job wait expired; remote outcome unknown")
+                    try:
+                        msg = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                    except asyncio.TimeoutError:
+                        raise TimeoutError("Image job wait expired; remote outcome unknown") from None
                     if not isinstance(msg, str):
                         continue
                     event = json.loads(msg)
                     event_type = event.get("type")
                     event_data = event.get("data", {})
+                    if event_type in {"execution_start", "executing", "progress", "execution_error"} and event_data.get("prompt_id") != prompt_id:
+                        continue
 
                     if event_type == "execution_start":
                         print("  [START] Kaggle execution pipeline started.")
@@ -324,12 +338,12 @@ class ImageHarnessSession:
                     elif event_type == "progress":
                         val = event_data.get("value", 0)
                         max_val = event_data.get("max", 1)
-                        pct = int((val / max_val) * 100)
+                        pct = int((val / max(1, max_val)) * 100)
                         bar_len = 30
                         filled = int((pct / 100) * bar_len)
                         bar = "#" * filled + "-" * (bar_len - filled)
                         elapsed = int(time.time() - start_t)
-                        sys.stdout.write(f"\r  [{elapsed:3d}s] Denoising: [{bar}] {pct:3d}% (Step {val}/{max_val})")
+                        sys.stdout.write(scrubber.scrub(f"\r  [{elapsed:3d}s] Denoising: [{bar}] {pct:3d}% (Step {val}/{max_val})"))
                         sys.stdout.flush()
                     elif event_type == "execution_error":
                         print(f"\n  [ERROR] Kaggle execution failed: {event_data.get('exception_message')}")
@@ -352,13 +366,14 @@ class ImageHarnessSession:
                 subfolder = img.get("subfolder", "")
                 img_type = img.get("type", "output")
 
-                view_url = f"{self.server_url}/view?filename={filename}&subfolder={subfolder}&type={img_type}"
+                view_url = self.server_url + "/view?" + urllib.parse.urlencode({"filename": filename, "subfolder": subfolder, "type": img_type})
                 if custom_out:
                     out_path = Path(custom_out)
                 else:
                     ts = time.strftime("%Y%m%d_%H%M%S")
                     out_path = Path(f"./output/qwen_{ts}.png")
 
+                out_path = validate_workspace_path(str(out_path), allow_write_to_new_file=True)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 urllib.request.urlretrieve(view_url, out_path)
 
@@ -370,7 +385,7 @@ class ImageHarnessSession:
                 print("=" * 76 + "\n")
 
                 self.history.append({
-                    "prompt": prompt,
+                    "prompt": scrubber.scrub(prompt),
                     "path": str(out_path),
                     "width": w,
                     "height": h,

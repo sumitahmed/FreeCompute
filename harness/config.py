@@ -61,7 +61,10 @@ class HarnessConfig(BaseModel):
                 key, separator, value = line.removeprefix("export ").partition("=")
                 if not separator:
                     raise ValueError("Malformed .env assignment")
-                environment[key.strip()] = value.strip().strip("\"'")
+                value = value.strip()
+                if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
+                    value = value[1:-1]
+                environment[key.strip()] = value
         names = {"remote_url": "REMOTE_URL", "api_key": "API_KEY", "image_server_url": "IMAGE_SERVER",
                  "model_alias": "MODEL_ALIAS", "transport": "TRANSPORT", "workspace_root": "WORKSPACE",
                  "request_timeout_seconds": "TIMEOUT", "max_context_tokens": "MAX_CONTEXT_TOKENS",

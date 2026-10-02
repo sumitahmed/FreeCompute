@@ -100,6 +100,7 @@ def print_status_telemetry(client: Any, session_tracker: SessionTracker, quota_l
         print(f"Session Age Est  : {st['container_uptime_formatted']} (source: {st['session_age_source']})")
         print(f"12h Assumption   : {st['remaining_12h_formatted']}")
         print(f"Weekly Quota Est : {qt['estimated_remaining_hours']}h remaining (last observed: {qt['last_observed_hours']}h)")
+        print(fmt.dim("Quota basis: local task wall time; verify GPU allocation/billing in the provider dashboard."))
         if h.gpus:
             print("GPU Allocations  :")
             for g in h.gpus:

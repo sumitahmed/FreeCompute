@@ -6,6 +6,7 @@ import time
 import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
+from harness.tools.atomic import replace_bytes
 from harness.tools.sandbox import validate_workspace_path
 from harness.security import scrubber
 
@@ -109,7 +110,7 @@ class UndoManager:
                 content = backup.read_bytes()
                 if hashlib.sha256(content).hexdigest() != snapshot.pre_hash:
                     raise ValueError("Backup changed during approval")
-                target.write_bytes(content)
+                replace_bytes(target, content, str(self.workspace_root), snapshot.post_hash)
             elif target.exists():
                 target.unlink()
             self.snapshots.pop()

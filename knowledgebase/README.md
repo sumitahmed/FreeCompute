@@ -2,12 +2,14 @@
 
 Research date: **2026-10-02**. Audited baseline: `main`, `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`.
 
-**Status: proposed architecture, awaiting user review. This research authorizes no V2 implementation.** Repository changes in this phase are Markdown under `knowledgebase/` only. No models, GPU sessions, tunnels, deployments, GUI, or website were started.
+**Current status: Stage 1 repairs and a bounded OpenHands compatibility spike were subsequently authorized.** The original architecture remains proposed. See [Stage 1 evidence](STAGE1_SAFETY_BASELINE.md) and [SDK results](OPENHANDS_COMPATIBILITY_SPIKE.md): **NEEDS MORE EVIDENCE**, no production SDK adoption. No GPU sessions, tunnels, deployments, GUI, website or broad V2 runtime was started.
 
 Read these in order:
 
 | Document | Purpose |
 | --- | --- |
+| [STAGE1_SAFETY_BASELINE.md](STAGE1_SAFETY_BASELINE.md) | Implemented changes, tests and remaining safety limits |
+| [OPENHANDS_COMPATIBILITY_SPIKE.md](OPENHANDS_COMPATIBILITY_SPIKE.md) | Exact SDK pin, compatibility matrix, decision and review gate |
 | [FREECOMPUTE_V2_VISION.md](FREECOMPUTE_V2_VISION.md) | Product boundaries, recommended direction, unresolved choices |
 | [CURRENT_ARCHITECTURE_AUDIT.md](CURRENT_ARCHITECTURE_AUDIT.md) | Actual code, defects, evidence strength, components to preserve |
 | [RESEARCH_EVIDENCE.md](RESEARCH_EVIDENCE.md) | Inspection coverage, test/probe results, immutable upstream source inventory |

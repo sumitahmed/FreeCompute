@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
+from harness.tools.atomic import replace_bytes, content_hash
 from harness.tools.sandbox import validate_workspace_path, SandboxSecurityViolation
 
 
@@ -60,14 +61,14 @@ def write_file(
     if target.exists() and not overwrite:
         raise FileExistsError(f"File already exists: '{path}'. Set overwrite=True to replace.")
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with open(target, "w", encoding="utf-8") as f:
-        f.write(content)
+    existed = target.exists()
+    before = content_hash(target)
+    replace_bytes(target, content.encode("utf-8"), workspace_root, before)
 
     return {
         "path": str(target.relative_to(Path(workspace_root).resolve())),
         "bytes_written": len(content.encode("utf-8")),
-        "status": "overwritten" if target.exists() and overwrite else "created",
+        "status": "overwritten" if existed else "created",
     }
 
 
@@ -85,6 +86,7 @@ def edit_file(
     if not target.is_file():
         raise FileNotFoundError(f"File not found: '{path}'")
 
+    before = content_hash(target)
     with open(target, "r", encoding="utf-8", errors="replace") as f:
         original = f.read()
 
@@ -128,8 +130,7 @@ def edit_file(
         )
     )
 
-    with open(target, "w", encoding="utf-8") as f:
-        f.write(updated)
+    replace_bytes(target, updated.encode("utf-8"), workspace_root, before)
 
     return {
         "path": rel_path,

@@ -297,7 +297,8 @@ class ToolRegistry:
                     raise ValueError("File changed during approval")
             if tool_name == "run_command":
                 return terminal.run_command(**arguments, workspace_root=self.workspace_root, cancellation_token=cancellation_token)
-            return scrubber.structured(tool.handler(**arguments))
+            result = scrubber.structured(tool.handler(**arguments))
+            return result if isinstance(result, dict) else {"result": result}
         except Exception as exc:
             return {"error": scrubber.scrub(f"Tool execution failed: {type(exc).__name__}: {exc}")}
 

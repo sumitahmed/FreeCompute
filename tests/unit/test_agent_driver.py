@@ -40,3 +40,15 @@ class AgentDriverContractTests(unittest.TestCase):
         state = DriverState(cancellation_requested=True)
         self.assertEqual(ProposalDriver().propose(state, self.response()), [])
         self.assertFalse(state.remote_cancel_confirmed)
+
+    def test_redacted_checkpoint_requires_reproposal(self):
+        from harness.security import scrubber
+        secret = "SYNTHETIC_PENDING_SECRET_ABCDE"
+        scrubber.register_secret(secret)
+        state = DriverState()
+        ProposalDriver().propose(state, self.response(json.dumps({"path": "a.txt", "content": secret})))
+        encoded = state.serialize()
+        self.assertNotIn(secret, encoded)
+        recovered = DriverState.recover(encoded)
+        self.assertTrue(recovered.recovery_requires_reproposal)
+        self.assertEqual(recovered.pending[0].call_id, "stable-call-1")

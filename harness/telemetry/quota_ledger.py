@@ -5,6 +5,7 @@ Explicitly labels all calculations as estimates without inventing machine-readab
 
 import json
 import os
+from harness.security import scrubber
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -66,7 +67,7 @@ class QuotaLedger:
 
     def get_summary(self) -> Dict[str, Any]:
         """Return the current quota accounting status."""
-        return {
+        return scrubber.structured({
             "last_observed_hours": self.last_observed_hours,
             "observed_as_of": self.observed_timestamp_iso,
             "session_consumed_hours": round(self.active_session_seconds / 3600.0, 3),
@@ -74,7 +75,7 @@ class QuotaLedger:
             "is_estimate": True,
             "accounting_basis": "local_task_wall_time; not GPU billing or allocation uptime",
             "disclaimer": "Local task time excludes idle GPU allocation and other clients. Verify actual quota in the provider dashboard.",
-        }
+        })
 
     def save(self):
         """Persist ledger to disk."""
@@ -87,7 +88,7 @@ class QuotaLedger:
             "current_session_start": self.current_session_start,
         }
         with open(self.storage_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(scrubber.structured(data), f, indent=2)
 
     def load(self):
         """Load ledger from disk if it exists."""

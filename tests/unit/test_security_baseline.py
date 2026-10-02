@@ -97,10 +97,24 @@ class SafetyBaselineTests(unittest.TestCase):
         try:
             link.symlink_to(outside)
         except OSError:
-            self.skipTest("OS does not grant symlink creation; junction test runs separately")
-        with self.assertRaises(SandboxSecurityViolation):
-            self.undo.record_pre_change(str(link))
-        self.assertEqual(grep_search("needle", workspace_root=str(self.workspace))["total_matches"], 0)
+            # Exercise the lstat contract when Windows denies symlink creation.
+            # The separate junction test exercises a real Windows reparse point.
+            import stat
+            link.write_text("needle alias")
+            original = Path.lstat
+            def linked_stat(path):
+                data = original(path)
+                if path == link:
+                    data = os.stat_result((stat.S_IFLNK,) + tuple(data)[1:])
+                return data
+            with patch.object(Path, "lstat", linked_stat):
+                with self.assertRaises(SandboxSecurityViolation):
+                    self.undo.record_pre_change(str(link))
+                self.assertEqual(grep_search("needle", workspace_root=str(self.workspace))["total_matches"], 0)
+        else:
+            with self.assertRaises(SandboxSecurityViolation):
+                self.undo.record_pre_change(str(link))
+            self.assertEqual(grep_search("needle", workspace_root=str(self.workspace))["total_matches"], 0)
 
     @unittest.skipUnless(os.name == "nt", "Windows junction test")
     def test_windows_junction_search_and_snapshot_denied(self):
@@ -169,6 +183,19 @@ class SafetyBaselineTests(unittest.TestCase):
             return True
         self.assertEqual(self.undo.undo_last(approval)["status"], "error")
         self.assertEqual(target.read_text(), "during approval")
+
+    def test_atomic_replacement_failure_preserves_file_and_snapshot(self):
+        target, snapshot = self.changed_file()
+        with patch("harness.tools.atomic.os.replace", side_effect=OSError("fixture replacement failure")):
+            self.assertEqual(self.undo.undo_last(lambda *_: True)["status"], "error")
+        self.assertEqual(target.read_text(), "after")
+        self.assertEqual(self.undo.snapshots[-1].snapshot_id, snapshot.snapshot_id)
+        self.assertFalse(list(self.workspace.glob(".freecompute-write-*")))
+
+    def test_windows_dot_space_alias_of_protected_directory_denied(self):
+        for path in (".GIT./config", ".ssh /config", "secret.json. "):
+            with self.assertRaises(SandboxSecurityViolation):
+                validate_workspace_path(path, str(self.workspace))
 
     def test_split_registered_secrets_redacted_at_every_boundary(self):
         source = SecretScrubber()
@@ -253,7 +280,7 @@ class SafetyBaselineTests(unittest.TestCase):
                     supervisor.SupervisorConfig(api_key=key)
 
     def test_supervisor_health_auth_and_backend_allowlist(self):
-        with patch.object(supervisor, "config", supervisor.SupervisorConfig(api_key="fixture-auth-only")), patch.object(supervisor, "check_llama_health", return_value=True), patch.object(supervisor, "get_gpu_telemetry", return_value=[]):
+        with patch.object(supervisor, "config", supervisor.SupervisorConfig(api_key="test-secret-token")), patch.object(supervisor, "check_llama_health", return_value=True), patch.object(supervisor, "get_gpu_telemetry", return_value=[]):
             server = supervisor.ThreadedHTTPServer(("127.0.0.1", 0), supervisor.SupervisorHandler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -262,7 +289,8 @@ class SafetyBaselineTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as denied:
                     urllib.request.urlopen(base + "/health")
                 self.assertEqual(denied.exception.code, 401)
-                headers = {"Authorization": "Bearer fixture-auth-only"}
+                denied.exception.close()
+                headers = {"Authorization": "Bearer test-secret-token"}
                 with urllib.request.urlopen(urllib.request.Request(base + "/health", headers=headers)) as response:
                     data = json.load(response)
                 self.assertEqual(data["sessionAgeSource"], "supervisor_start_estimate")
@@ -271,6 +299,7 @@ class SafetyBaselineTests(unittest.TestCase):
                     with self.assertRaises(urllib.error.HTTPError) as denied:
                         urllib.request.urlopen(urllib.request.Request(base + path, headers=headers))
                     self.assertEqual(denied.exception.code, 404)
+                    denied.exception.close()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -283,6 +312,152 @@ class SafetyBaselineTests(unittest.TestCase):
             orchestrator = AgentOrchestrator(client, PromptBuilder(), self.registry, TaskJournal(str(self.root / "journal")), SessionTracker(), QuotaLedger(str(self.root / "quota.json")))
             orchestrator.run_task("fixture", on_approval_request=lambda *_: True)
             self.assertFalse((self.workspace / "x").exists())
+
+    def test_model_reasoning_and_content_callbacks_are_scrubbed(self):
+        secret = "SYNTHETIC_STREAM_SECRET_ABCDE"
+        scrubber.register_secret(secret)
+        client = MagicMock()
+        client.stream_chat.return_value = iter([
+            StreamChunk(delta_content="answer " + secret[:12], delta_reasoning="reason " + secret[:12]),
+            StreamChunk(delta_content=secret[12:], delta_reasoning=secret[12:], finish_reason="stop")])
+        output, reasoning = [], []
+        journal = TaskJournal(str(self.root / "journal"))
+        orchestrator = AgentOrchestrator(client, PromptBuilder(), self.registry, journal, SessionTracker(), QuotaLedger(str(self.root / "quota.json")))
+        result = orchestrator.run_task("fixture", on_token=output.append, on_reasoning=reasoning.append)
+        self.assertEqual("".join(output), "answer [REDACTED_SECRET]")
+        self.assertEqual("".join(reasoning), "reason [REDACTED_SECRET]")
+        self.assertNotIn(secret, journal.journal_file.read_text())
+        self.assertNotIn(secret, str(result["history"]))
+        self.assertIsNone(result["usage"])
+
+    def test_one_malformed_call_prevents_the_entire_batch(self):
+        client = MagicMock()
+        client.stream_chat.side_effect = [iter([StreamChunk(tool_call_deltas=[
+            {"index": 0, "id": "valid", "function": {"name": "write_file", "arguments": '{"path":"valid.txt","content":"hello"}'}},
+            {"index": 1, "id": "broken", "function": {"name": "write_file", "arguments": "{"}}], finish_reason="tool_calls")]),
+            iter([StreamChunk(delta_content="fixture stopped", finish_reason="stop")])]
+        orchestrator = AgentOrchestrator(client, PromptBuilder(), self.registry, TaskJournal(str(self.root / "journal")), SessionTracker(), QuotaLedger(str(self.root / "quota.json")))
+        approved = MagicMock(return_value=True)
+        orchestrator.run_task("fixture", on_approval_request=approved)
+        approved.assert_not_called()
+        self.assertFalse((self.workspace / "valid.txt").exists())
+
+    def test_checkpoint_corruption_is_preserved_and_reported(self):
+        journal = TaskJournal(str(self.root / "journal"))
+        journal.checkpoints_file.write_text("corrupt")
+        with self.assertRaises(ValueError):
+            journal.save_checkpoint("run", {"data": 1})
+        self.assertEqual(journal.checkpoints_file.read_text(), "corrupt")
+
+    def test_no_redirect_from_authenticated_inference(self):
+        import http.server
+        from harness.core.client import KaggleBrainClient, RemoteBrainUnavailableError
+        class Redirect(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.1:1/capture")
+                self.end_headers()
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            client = KaggleBrainClient(f"http://127.0.0.1:{server.server_port}", api_key="fixture-token-not-live")
+            with self.assertRaises(RemoteBrainUnavailableError) as error:
+                client.get_health()
+            self.assertIn("302", str(error.exception))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_subprocess_cancellation_records_owned_exit_and_unknown_descendants(self):
+        from harness.tools.terminal import run_command
+        token = CancellationToken()
+        timer = threading.Timer(0.15, token.cancel)
+        timer.start()
+        try:
+            result = run_command('python -c "import time; time.sleep(1)"', workspace_root=str(self.workspace), cancellation_token=token)
+        finally:
+            timer.cancel()
+        self.assertTrue(result["cancellation_requested"])
+        self.assertTrue(result["owned_process_exit_confirmed"])
+        self.assertEqual(result["descendant_cancellation"], "unknown")
+
+    def test_image_cli_upload_and_output_boundaries(self):
+        from harness.cli.image import ImageHarnessSession
+        previous = Path.cwd()
+        os.chdir(self.workspace)
+        try:
+            session = ImageHarnessSession("http://127.0.0.1:1")
+            with self.assertRaises(SandboxSecurityViolation):
+                session.upload_image(self.root / "outside.png")
+        finally:
+            os.chdir(previous)
+
+    def test_image_cli_ignores_other_job_completion(self):
+        import asyncio
+        from harness.cli.image import ImageHarnessSession
+        messages = [
+            {"type": "executing", "data": {"prompt_id": "other-job", "node": None}},
+            {"type": "execution_start", "data": {"prompt_id": "fixture-job"}},
+            {"type": "executing", "data": {"prompt_id": "fixture-job", "node": None}},
+        ]
+        class WebSocket:
+            received = 0
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *_):
+                pass
+            async def recv(self):
+                message = messages[self.received]
+                self.received += 1
+                return json.dumps(message)
+        websocket = WebSocket()
+        queued, history = MagicMock(), MagicMock()
+        queued.__enter__.return_value.read.return_value = b'{"prompt_id":"fixture-job"}'
+        history.__enter__.return_value.read.return_value = b'{"fixture-job":{"outputs":{"9":{"images":[{"filename":"fixture.png"}]}}}}'
+        def download(url, destination):
+            self.assertEqual(websocket.received, 3)
+            Path(destination).write_bytes(b"fixture image")
+        previous = Path.cwd()
+        os.chdir(self.workspace)
+        try:
+            with patch("harness.cli.image.websockets.connect", return_value=websocket), patch("urllib.request.urlopen", side_effect=[queued, history]), patch("urllib.request.urlretrieve", side_effect=download), patch("os.startfile", create=True), contextlib.redirect_stdout(io.StringIO()):
+                session = ImageHarnessSession("http://127.0.0.1:1")
+                asyncio.run(session.execute_generation("fixture", custom_out="result.png"))
+            self.assertEqual((self.workspace / "result.png").read_bytes(), b"fixture image")
+        finally:
+            os.chdir(previous)
+
+    def test_image_cli_timeout_does_not_claim_remote_cancellation(self):
+        import asyncio
+        from harness.cli.image import ImageHarnessSession
+        class WebSocket:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *_):
+                pass
+            async def recv(self):
+                raise asyncio.TimeoutError()
+        queued = MagicMock()
+        queued.__enter__.return_value.read.return_value = b'{"prompt_id":"fixture-job"}'
+        output = io.StringIO()
+        with patch("harness.cli.image.websockets.connect", return_value=WebSocket()), patch("urllib.request.urlopen", return_value=queued), patch("urllib.request.urlretrieve") as download, contextlib.redirect_stdout(output):
+            asyncio.run(ImageHarnessSession("http://127.0.0.1:1").execute_generation("fixture"))
+        download.assert_not_called()
+        self.assertIn("remote outcome unknown", output.getvalue())
+
+    def test_comfy_remote_filename_cannot_escape_output_root(self):
+        provider = ComfyUIProvider("http://127.0.0.1:1", output_dir="out", workspace_root=str(self.workspace))
+        queued, history = MagicMock(), MagicMock()
+        queued.__enter__.return_value.read.return_value = b'{"prompt_id":"fixture-id"}'
+        history.__enter__.return_value.read.return_value = b'{"fixture-id":{"outputs":{"9":{"images":[{"filename":"../outside.png"}]}}}}'
+        with patch("urllib.request.urlopen", side_effect=[queued, history]), patch("time.sleep"), patch("urllib.request.urlretrieve") as download:
+            with self.assertRaises(ValueError):
+                provider.generate_image("fixture")
+            download.assert_not_called()
 
     def test_notebook_supervisor_matches_canonical_and_auth_health(self):
         import ast

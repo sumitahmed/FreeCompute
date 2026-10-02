@@ -4,6 +4,7 @@ Distinguishes locally measured connected uptime from Kaggle container lifetime,
 and computes honest countdown to the 12-hour platform cutoff.
 """
 
+from harness.security import scrubber
 import time
 from typing import Dict, Any, Optional
 
@@ -87,7 +88,7 @@ class SessionTracker:
         """Generate a complete honest telemetry snapshot."""
         rem = self.seconds_remaining_in_12h_session
         container_age = self.estimated_container_uptime_seconds
-        return {
+        return scrubber.structured({
             "is_connected": self.is_connected,
             "is_estimate": True,
             "session_age_source": self.session_age_source,
@@ -100,4 +101,4 @@ class SessionTracker:
             "remaining_12h_formatted": format_duration(rem) if rem is not None else "Unknown",
             "is_warning": self.is_warning,
             "is_critical": self.is_critical,
-        }
+        })

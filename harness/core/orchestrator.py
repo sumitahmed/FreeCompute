@@ -67,7 +67,9 @@ class AgentOrchestrator:
         self.cancellation_token = CancellationToken()
 
         # Add user prompt — append /no_think so Qwen3 doesn't emit thinking-only empty output
-        prompt_content = user_prompt if user_prompt.strip().endswith("/no_think") else f"{user_prompt} /no_think"
+        alias = getattr(self.client, "model_alias", "")
+        qwen = isinstance(alias, str) and alias.lower().startswith("qwen")
+        prompt_content = f"{user_prompt} /no_think" if qwen and not user_prompt.strip().endswith("/no_think") else user_prompt
         user_msg = Message(role="user", content=prompt_content)
         history.append(user_msg)
 
@@ -115,7 +117,7 @@ class AgentOrchestrator:
                     completed = completed or chunk.stream_complete or chunk.finish_reason in {"stop", "tool_calls"}
                     truncated = truncated or chunk.finish_reason in {"length", "content_filter"}
                     if chunk.usage:
-                        usage = chunk.usage
+                        usage = scrubber.structured(chunk.usage)
                     if ttft_ms is None and chunk.ttft_ms is not None:
                         ttft_ms = chunk.ttft_ms
                     reasoning = reasoning_output.feed(chunk.delta_reasoning)
@@ -183,27 +185,33 @@ class AgentOrchestrator:
                     )
                     history.append(assistant_msg)
 
-                    # Execute each proposed tool
-                    for tc in parsed_tool_calls:
-                        tool_name = tc.function.name if tc.function else "unknown"
-                        args_str = tc.function.arguments if tc.function else "{}"
+                    parsed_arguments = []
+                    invalid_batch = False
+                    for call in parsed_tool_calls:
                         try:
-                            args_dict = json.loads(args_str)
-                        except json.JSONDecodeError:
-                            args_dict = None
+                            arguments = json.loads(call.function.arguments)
+                            if not isinstance(arguments, dict):
+                                raise ValueError("Tool arguments must be an object")
+                            parsed_arguments.append(arguments)
+                        except (ValueError, TypeError):
+                            invalid_batch = True
+                            parsed_arguments.append(None)
 
+                    # Execute each proposed tool
+                    for tc, args_dict in zip(parsed_tool_calls, parsed_arguments):
+                        tool_name = tc.function.name if tc.function else "unknown"
                         if on_tool_proposed:
                             on_tool_proposed(scrubber.scrub(tool_name), scrubber.structured(args_dict))
 
                         if on_phase_change:
                             on_phase_change("executing_tool", scrubber.scrub(f"Proposed {tool_name}"))
-                        result = self.tools.execute(tool_name, args_dict,
-                                                    approval_callback=on_approval_request,
-                                                    cancellation_token=self.cancellation_token)
+                        result = {"error": "Malformed tool-call batch; no actions executed"} if invalid_batch else self.tools.execute(
+                            tool_name, args_dict, approval_callback=on_approval_request,
+                            cancellation_token=self.cancellation_token)
                         approved = result.get("status") != "rejected" and "error" not in result
 
                         if on_tool_executed:
-                            on_tool_executed(tool_name, result)
+                            on_tool_executed(scrubber.scrub(tool_name), result)
 
                         # Record event in journal
                         self.journal.record_event(
@@ -257,6 +265,21 @@ class AgentOrchestrator:
         finally:
             self.quota.stop_session()
             self.cancellation_token.local_stop_confirmed = self.cancellation_token.is_cancelled
+
+        if self.cancellation_token.is_cancelled:
+            status = "cancel_requested"
+        if status != "completed" and on_phase_change:
+            on_phase_change(status, "Task stopped; completion was not confirmed.")
+        for message in history:
+            if message.content is not None:
+                message.content = scrubber.scrub(message.content)
+            if message.name:
+                message.name = scrubber.scrub(message.name)
+            if message.tool_calls:
+                for call in message.tool_calls:
+                    if call.function:
+                        call.function.name = scrubber.scrub(call.function.name)
+                        call.function.arguments = scrubber.scrub(call.function.arguments)
 
         return {
             "status": status,

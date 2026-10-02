@@ -2,13 +2,15 @@
 
 Proposed decision, 2026-10-02; not approved. Evidence: [source research](OPEN_SOURCE_AGENT_RESEARCH.md), [pins/licenses](RESEARCH_EVIDENCE.md).
 
+The authorized spike now has [a concrete result](OPENHANDS_COMPATIBILITY_SPIKE.md): **NEEDS MORE EVIDENCE**. Keep the existing orchestrator pending review. The alternatives below remain research, not authorization to evaluate or adopt them.
+
 ## Recommendation
 
 Build a thin, authoritative local FreeCompute core around a replaceable `AgentDriver`. **Evaluate OpenHands software-agent SDK first**, pinned behind an optional dependency/adapter. Reuse its typed agent loop and context machinery only if the boundary tests below pass. Do not import its full hosted product or accept its default tools, delegation, confirmation, logging, or persistence behavior unchanged.
 
 This recommendation preserves the current Python codebase and local-first architecture while avoiding a custom reimplementation of every agent loop. It requires a deliberate Python 3.12 floor decision. Integration is not proven: default `NeverConfirm`, callbacks after persistence, visualizers before persistence, transitive telemetry, and SDK state ownership are concrete risks.
 
-If safe integration requires deep overrides or a permanent security fork, stop and evaluate **Cline SDK** for a Node/TypeScript core. Pi is the smaller TypeScript fallback when host policy ownership matters more than built-in lifecycle/cron machinery. Do not quietly implement a custom loop after the first SDK fails. A narrow custom driver is the last option after documenting why reusable candidates failed the same acceptance tests.
+If safe integration requires deep overrides or a permanent security fork, stop for user review before any evaluation of **Cline SDK** for a Node/TypeScript core. Pi is the smaller TypeScript fallback when host policy ownership matters more than built-in lifecycle/cron machinery. Do not quietly implement a custom loop after the first SDK fails. A narrow custom driver is the last option after documenting why reusable candidates failed the same acceptance tests.
 
 ## Alternatives
 

@@ -30,6 +30,7 @@ class TaskJournal:
             "type": event_type,
             "payload": scrubber.structured(payload),
         }
+        event = scrubber.structured(event)
         with open(self.journal_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
         return event
@@ -42,8 +43,12 @@ class TaskJournal:
             "updatedAtUtc": datetime.now(timezone.utc).isoformat(),
             "state": scrubber.structured(state),
         }
-        with open(self.checkpoints_file, "w", encoding="utf-8") as f:
-            json.dump(checkpoints, f, indent=2, ensure_ascii=False)
+        temporary = self.journal_dir / (uuid.uuid4().hex + ".tmp")
+        try:
+            temporary.write_text(json.dumps(scrubber.structured(checkpoints), indent=2, ensure_ascii=False), encoding="utf-8")
+            os.replace(temporary, self.checkpoints_file)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def get_checkpoint(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve the latest checkpoint for a run ID."""
@@ -57,8 +62,8 @@ class TaskJournal:
         try:
             with open(self.checkpoints_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
-            return {}
+        except (OSError, ValueError) as exc:
+            raise ValueError("Checkpoint file is unreadable or corrupt; preserved for recovery") from None
 
     def get_events_for_run(self, run_id: str) -> List[Dict[str, Any]]:
         """Retrieve all historical events for a specific run."""

@@ -6,6 +6,7 @@ Handles Bearer auth, SSE chunk parsing, TTFT calculation, structured tool calls,
 from harness.security import scrubber, StreamRedactor
 import socket
 import threading
+from dataclasses import replace
 import json
 import time
 import urllib.error
@@ -58,6 +59,11 @@ class CancellationToken:
                 "remote_outcome": "unknown" if self.is_cancelled else "not_requested"}
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class KaggleBrainClient:
     def __init__(
         self,
@@ -66,6 +72,9 @@ class KaggleBrainClient:
         model_alias: str = "qwen3.8-27b-huihui-abliterated-q4",
         timeout_seconds: int = 900,
     ):
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Inference endpoint must use HTTP(S) without URL credentials")
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         scrubber.register_secret(api_key)
@@ -88,21 +97,21 @@ class KaggleBrainClient:
         req = urllib.request.Request(url, headers=self._get_headers(), method="GET")
 
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.build_opener(_NoRedirect()).open(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 gpus = []
                 for g in data.get("gpus", []):
                     if "error" not in g:
                         gpus.append(GpuTelemetry(
                             index=g.get("index", 0),
-                            name=g.get("name", "Tesla T4"),
+                            name=scrubber.scrub(g.get("name", "Tesla T4")),
                             vram_used_mib=g.get("vramUsedMiB", 0),
                             vram_total_mib=g.get("vramTotalMiB", 15360),
                             temp_c=g.get("tempC", 0),
                             utilization_pct=g.get("utilizationPct", 0),
                         ))
                 return RemoteHealth(
-                    status=data.get("status", "unknown"),
+                    status=scrubber.scrub(data.get("status", "unknown")),
                     supervisor_uptime_s=data.get("supervisorUptimeSeconds", 0.0),
                     container_uptime_s=data.get("containerUptimeSeconds", 0.0),
                     max_session_s=data.get("maxSessionSeconds", 43200.0),
@@ -111,9 +120,10 @@ class KaggleBrainClient:
                     raw=scrubber.structured(data),
                 )
         except urllib.error.HTTPError as exc:
+            exc.close()
             if exc.code in (401, 403):
                 raise AuthenticationError(f"Authentication failed ({exc.code}): Check your API key.")
-            raise RemoteBrainUnavailableError(f"HTTP error from Kaggle brain: {exc.code} {exc.reason}")
+            raise RemoteBrainUnavailableError(scrubber.scrub(f"HTTP error from Kaggle brain: {exc.code} {exc.reason}"))
         except Exception as exc:
             raise RemoteBrainUnavailableError(scrubber.scrub(f"Cannot connect to Kaggle supervisor at {self.base_url}: {exc}"))
 
@@ -154,7 +164,7 @@ class KaggleBrainClient:
             return
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+            with urllib.request.build_opener(_NoRedirect()).open(req, timeout=self.timeout_seconds) as resp:
                 if cancellation_token:
                     cancellation_token.attach_response(resp)
                 completed = False
@@ -191,7 +201,7 @@ class KaggleBrainClient:
                             yield StreamChunk(
                                 delta_content=text_redactor.feed(content),
                                 delta_reasoning=reasoning_redactor.feed(reasoning),
-                                usage=data.get("usage"),
+                                usage=scrubber.structured(data.get("usage")),
                                 tool_call_deltas=tool_calls,
                                 finish_reason=finish_reason,
                                 is_first_token=is_first,
@@ -202,6 +212,7 @@ class KaggleBrainClient:
                 if not completed and not (cancellation_token and cancellation_token.is_cancelled):
                     raise ValueError("Incomplete inference stream")
         except urllib.error.HTTPError as exc:
+            exc.close()
             if exc.code in (401, 403):
                 raise AuthenticationError(f"Authentication rejected by Kaggle supervisor: HTTP {exc.code}")
             raise RemoteBrainUnavailableError(f"Server error: {exc.code}")
@@ -233,9 +244,10 @@ class KaggleBrainClient:
                 ttft_ms = chunk.ttft_ms
             if chunk.delta_content:
                 full_content.append(chunk.delta_content)
+            visible_chunk = replace(chunk, tool_call_deltas=scrubber.structured(chunk.tool_call_deltas), usage=scrubber.structured(chunk.usage))
             if on_chunk:
-                on_chunk(chunk)
-            chunks.append(chunk)
+                on_chunk(visible_chunk)
+            chunks.append(visible_chunk)
             if token and token.is_cancelled:
                 break
         return {

@@ -2,6 +2,8 @@
 
 Audit: 2026-10-02, baseline `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`. Source paths/line numbers below refer to that baseline. Local fixture results are in [RESEARCH_EVIDENCE.md](RESEARCH_EVIDENCE.md). No live inference service was contacted.
 
+Subsequent authorized work: [Stage 1 fixes and remaining limits](STAGE1_SAFETY_BASELINE.md), [OpenHands spike](OPENHANDS_COMPATIBILITY_SPIKE.md). Findings below remain the historical baseline; they are not a fresh assertion that every defect is still present.
+
 ## What runs today
 
 `freecompute` enters `harness/cli/main.py`; configuration builds a llama.cpp provider and a synchronous REPL. The REPL handles a few local slash commands, tracks an in-memory conversation, then runs `AgentOrchestrator`. The orchestrator requests streamed chat, collects tool proposals, asks the CLI for risky-action approval, executes local tools, and appends JSONL journal records. Image generation also has separate CLI/standalone entry points. Kaggle notebooks build/download models, start llama-server or ComfyUI, and expose services through notebook-created transports.

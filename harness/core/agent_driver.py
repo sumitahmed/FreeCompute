@@ -22,11 +22,15 @@ class DriverState:
     cancellation_requested: bool = False
     local_stop_confirmed: bool = False
     remote_cancel_confirmed: bool = False
+    recovery_requires_reproposal: bool = False
 
     def serialize(self):
         # Sanitized checkpoints cannot replay redacted arguments. Recovery must
         # request fresh input and fresh approval for any such proposal.
-        return json.dumps(scrubber.structured(asdict(self)), sort_keys=True)
+        raw = asdict(self)
+        clean = scrubber.structured(raw)
+        clean["recovery_requires_reproposal"] = self.recovery_requires_reproposal or raw != clean
+        return json.dumps(clean, sort_keys=True)
 
     @classmethod
     def recover(cls, encoded):
@@ -66,5 +70,6 @@ class ProposalDriver:
             if not isinstance(arguments, dict) or not isinstance(function["name"], str):
                 raise ValueError("Complete tool object required")
             proposals.append(ActionProposal(identity, function["name"], arguments))
+        state.recovery_requires_reproposal = False
         state.pending = proposals
         return proposals

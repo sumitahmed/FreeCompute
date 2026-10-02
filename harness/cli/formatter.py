@@ -92,7 +92,7 @@ class TerminalFormatter:
         if status == "healthy":
             container_age = health_summary.get("container_uptime_formatted", "Unknown")
             rem_12h = health_summary.get("remaining_12h_formatted", "Unknown")
-            print(f"  Remote State  : {self.green('ONLINE')} | Container Age: {container_age} | 12h Cap: {rem_12h}")
+            print(f"  Remote State  : {self.green('ONLINE')} | Session age estimate: {container_age} | 12h assumption: {rem_12h}")
             gpus = health_summary.get("gpus", [])
             if gpus:
                 gpu_info = ", ".join(

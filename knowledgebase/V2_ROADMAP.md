@@ -1,6 +1,12 @@
 # V2 staged roadmap and review decisions
 
-Proposed, 2026-10-02. **Stop after architecture review. Nothing below authorizes implementation, deployment or provider sessions.** Existing phases marked complete in older documents are not acceptance of this V2 plan.
+Proposed, 2026-10-02. **The user subsequently authorized Stage 1 safety repairs and a bounded Stage 2 spike only. Later stages, deployment and provider sessions remain unauthorized.** Existing phases marked complete in older documents are not acceptance of this V2 plan.
+
+## Recorded progress ? 2026-10-02
+
+- Stage 1: focused repairs implemented on `v2/safety-and-agentdriver-spike`; [evidence and release concerns](STAGE1_SAFETY_BASELINE.md). Expanded unit suite: 81 passed. Canonical supervisor and two embedded text notebook cells were repaired and compared locally; no notebook executed.
+- Stage 2: pinned `openhands-sdk==1.50.1` with disposable fake inference; 15 characterization tests passed. [Matrix and decision](OPENHANDS_COMPATIBILITY_SPIKE.md): **NEEDS MORE EVIDENCE**. Native delegation, universal routing/redaction and full restart/tool-result ownership are not proven.
+- Stages 3 onward: not started. Stop for user review; no automatic Cline/Pi evaluation.
 
 ## Sequence and evidence gates
 
@@ -37,7 +43,7 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 
 | Risk | Impact | Mitigation/gate |
 | --- | --- | --- |
-| SDK cannot yield authority/sinks | Unsafe tools or secret persistence despite wrapper | Public-interface spike; reject deep security fork; evaluate Cline/Pi |
+| SDK cannot yield authority/sinks | Unsafe tools or secret persistence despite wrapper | Public-interface spike; reject deep security fork; return for user review before alternatives |
 | Python 3.12 and dependencies | Install size/compatibility/regression | Optional extras, pinned lock/package verification, user decision |
 | Prompt/template variance | Invalid tools, truncated context, bad output | Per-profile conformance, tokenizer budget, incomplete-call rejection |
 | Dual-T4 memory/KV pressure | OOM/slow prefill under agents/media | Conservative one slot, per-device accounting, measured profiles |
@@ -52,7 +58,7 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 
 ## Decisions requiring user input
 
-1. **Foundation:** approve the proposed Python 3.12/OpenHands SDK spike, or choose a Cline/Pi TypeScript direction. This is the highest-impact choice.
+1. **Foundation:** review the completed bounded spike and decide whether to authorize the remaining authority/recovery tests. No SDK is adopted; alternative SDK evaluation requires a new decision.
 2. **First-release scope:** coding/text first with image adapter after the local authority baseline, or image jobs included earlier. Video stays later.
 3. **Execution mode:** approved trusted-host commands versus required isolated container/WSL execution; Windows release scope and supported OS matrix.
 4. **Workers/privacy:** first supported local/private server profiles; acceptable remote data disclosure and transport; notebook modes require current provider-policy confirmation.
@@ -60,4 +66,4 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 6. **Autonomy:** which schedules may have standing grants, with what paths/actions/network/budgets/expiry? Default headless tasks cannot auto-approve.
 7. **Client:** local browser dashboard first versus desktop or editor priority after API stabilization.
 
-Recommendation: approve a small baseline safety scope plus the foundation spike first, then review its concrete results before committing to the full V2 implementation. This phase stops with the research documents.
+Recommendation: review the implemented safety repairs and the NEEDS MORE EVIDENCE SDK result before authorizing further work. The current phase stops here; the full V2 migration remains unstarted.
