@@ -181,7 +181,7 @@ Links are pinned and remain usable without the temporary research directory. SHA
 
 ## Audited tracked inventory
 
-At baseline, 80 tracked files. No ignored runtime artifact is implied by this list.
+At the initial baseline, 80 tracked files. This inventory is taken from the fixed audited commit, not a later working-tree snapshot. No ignored runtime artifact is implied by this list.
 
 ```text
 .archify/architecture-freecompute-20260930-234700/candidate.json
@@ -234,13 +234,10 @@ kaggle/freecompute_dual_gpu_server.ipynb
 kaggle/supervisor.py
 kaggle/universal_dual_gpu_server.ipynb
 knowledgebase/ARCHITECTURE_DECISIONS.md
-knowledgebase/CURRENT_ARCHITECTURE_AUDIT.md
 knowledgebase/DEPLOYMENT_RUNBOOK.md
-knowledgebase/FREECOMPUTE_V2_VISION.md
 knowledgebase/KAGGLE_QWEN_CODING_HARNESS_HANDOFF.md
 knowledgebase/PHASE_0_AUDIT_AND_ARCHITECTURE.md
 knowledgebase/PROGRESS_TRACKER.md
-knowledgebase/README.md
 knowledgebase/ROADMAP.md
 pyproject.toml
 qwen3-8-27b-abliterated-q4-kaggle-dual-t4-proof.ipynb
@@ -268,3 +265,11 @@ tests/unit/test_terminal.py
 tests/unit/test_undo.py
 tests/unit/test_web_tools.py
 ```
+
+## Final document verification
+
+The required unit command was rerun after writing: **42 tests passed**, 1.301 seconds. The repository scanner then reported **99 files, zero pattern matches**, exit 0. Its printed release-safety wording is not endorsed by this audit. Markdown relative targets were checked: no missing targets.
+
+All fourteen new documents are under `knowledgebase/`; the six existing documents received only a historical notice, with their original bodies preserved. Comparison to the fixed initial baseline found no non-knowledgebase content changes after accounting for pre-existing Windows checkout CRLF conversion. Production modules, config, launchers, tests and notebook content were unchanged.
+
+Git HEAD advanced while documents were being written; this agent did not invoke commit, push, merge or reset. Validation therefore used the original fixed audit commit, rather than assuming HEAD remained stationary. Those commits were left intact.
