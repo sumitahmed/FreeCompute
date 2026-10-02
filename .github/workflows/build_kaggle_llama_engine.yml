@@ -28,13 +28,15 @@ jobs:
             -DGGML_CUDA=ON -DGGML_CUDA_NO_VMM=ON \
             -DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_BUILD_TYPE=Release \
             -DLLAMA_BUILD_TESTS=OFF -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
-          cmake --build build --target llama-server --parallel 2
+          cmake --build build --target llama-server --parallel 4
           build/bin/llama-server --version
+          echo 'Pinned engine compiled; packaging its matching CUDA runtime libraries.'
           mkdir -p engine
           cp -a build/bin/. engine/
           for library in libcudart.so.12 libcublas.so.12 libcublasLt.so.12; do
-            source=$(find /usr/local/cuda -name "$library" -print -quit)
-            test -n "$source"
+            source=$(find -L /usr/local/cuda -name "$library" -print -quit)
+            test -f "$source"
+            echo "Packaging $library from $source"
             cp -L "$source" "engine/$library"
           done
           tar -czf kaggle-llama-b11206-sm75-ubuntu22.tar.gz engine
