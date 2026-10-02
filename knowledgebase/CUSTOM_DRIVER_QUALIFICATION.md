@@ -30,5 +30,14 @@ will not be renamed into production or made a mandatory dependency.
 ## Evidence log
 
 - Initial baseline: 94/94 unit tests pass; no production changes yet.
-- Native driver qualification, production broker recovery and package/CLI
-  acceptance: pending. Claims will be updated from actual runs.
+- Native implementation: `harness/core/native_driver.py`, explicit normalized
+  response/decision/state contracts; no tools, providers or durable I/O. Generic
+  input accounting: `harness/core/context.py`. Atomic JSON rejection includes
+  duplicate keys, non-finite values, duplicate call IDs and sensitive arguments.
+- Initial six qualification tests cover sequential results/state round trips,
+  text completion, truncation/incomplete/failure/cancel/max-turn separation,
+  context/profile epochs, and the existing broker's denial/child restriction
+  boundaries. The prior 94 regressions remain unchanged.
+- These results qualify the narrow driver for the authorized production-runtime
+  integration. Stage 3 must still prove its own persistence, crash recovery and
+  CLI/package acceptance; the experiment is not substituted for that evidence.
