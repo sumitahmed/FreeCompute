@@ -35,7 +35,7 @@ attachments. No remote component executes local tools.
 | Other flags | `--fit off --flash-attn auto --jinja --no-context-shift` |
 | Tokenizer/template | Embedded GGUF identities; no override; exact hashes unverified |
 | Pool / resources / concurrency | `kaggle-dual-t4` / `gpu0`, `gpu1` / 1 |
-| Auth / transport | Private bearer token / Tailscale Serve raw TCP on 8081 |
+| Auth / transport | Private bearer token / Cloudflare Quick Tunnel URL for startup checks; optional Tailscale Serve TCP for SSE |
 | GPU memory | Must be freshly observed in code cells 2, 6 and 8; no fresh number yet |
 
 The historical handoff distinguishes the saved 32K proof notebook from the
@@ -52,18 +52,25 @@ failure; do not silently change context, weights, template or flags.
 - The cold build's heading claimed a pinned engine but cloned current HEAD.
   Fetch and detach at the historical pin, verify HEAD before CMake. Default
   acceptance ignores arbitrary dataset binaries/weights; no inputs are needed.
-- The default Quick Tunnel cannot satisfy the client's SSE requirement. HTTP/2
-  does not remove Cloudflare's documented Quick Tunnel SSE limitation.
+- The user requested a Cloudflare URL as an alternative and does not want to use
+  Tailscale for this run. The notebook now defaults to a Cloudflare Quick Tunnel;
+  it requires only `FREECOMPUTE_API_KEY` in Kaggle Secrets. HTTP/2 does not
+  remove Cloudflare's documented Quick Tunnel SSE limitation. Startup and
+  authenticated health/model checks can proceed, but streaming and downstream
+  Core inference acceptance remain unverified or blocked on this route.
 - The userspace Tailscale node had only an outbound SOCKS proxy, no explicit
   inbound forwarding, and missing auth silently selected a public tunnel.
-  Require private Tailscale; add Serve raw TCP forwarding; fail without fallback.
+  Tailscale remains an explicit optional mode with Serve TCP forwarding and its
+  own required secret. There is no silent fallback between modes.
 - A verification health request omitted required bearer auth. Readiness now
   authenticates health/model queries, checks readiness and alias, and has bounded
   timeouts. It issues no competing model generation during local acceptance.
-- Keys were printed and embedded in suggested shell commands. Retrieve both
-  keys from Kaggle Secrets, embed the existing `SecretScrubber` for notebook
-  presentation, pass the Tailscale key via a temporary 0600 file and remove it
-  after login. No key is printed, stored in the notebook or placed in argv.
+- Keys were printed and embedded in suggested shell commands. Retrieve the
+  bearer key from Kaggle Secrets and the Tailscale key only when its mode is
+  selected. The notebook embeds the existing `SecretScrubber` for presentation;
+  Tailscale passes its key via a temporary 0600 file and removes it after login.
+  The Cloudflare URL is shown only at runtime and not placed in a saved log.
+  No key is printed, stored in the notebook or placed in argv.
 
 The canonical supervisor is unchanged and remains byte-identical to both embedded
 copies. Model/quantization/revision/context/tensor split/engine flags are unchanged.
@@ -72,34 +79,33 @@ asset source. This pass does not certify raw upstream logs or external programs.
 
 ## Manual procedure
 
-Before allocating GPU time:
+For the requested Cloudflare URL route, before allocating GPU time:
 
-1. Connect the Windows PC to Tailscale. Create a preauthorized ephemeral-node
-   auth key for that same tailnet; ensure its policy permits PC-to-node TCP 8081.
-2. Choose a private random bearer token. Store it locally in the repository's
+1. Choose a private random bearer token. Store it locally in the repository's
    ignored `.env` as `FREECOMPUTE_API_KEY=...` (preserve other entries). Do not
-   commit or paste either credential into notebook source.
-3. Upload `kaggle/freecompute_dual_gpu_server.ipynb` from this feature branch.
+   commit or paste it into notebook source.
+2. Upload the current `kaggle/freecompute_dual_gpu_server.ipynb` from this feature branch.
    Keep it private. In Kaggle's Secrets UI, add and enable `FREECOMPUTE_API_KEY`
-   with the same bearer value and `TAILSCALE_AUTHKEY` with the tailnet key.
-4. Set Accelerator **GPU T4 x2**, Internet **ON**, Persistence **None**. Attach
+   with the same bearer value. `TAILSCALE_AUTHKEY` is unnecessary in Cloudflare mode.
+3. Set Accelerator **GPU T4 x2**, Internet **ON**, Persistence **None**. Attach
    **no datasets/inputs**. Start the interactive session only when ready.
-5. Run code cells **1, 2, 3, 4, 5, 6, 7, 8**, individually, in order.
+4. Run code cells **1, 2, 3, 4, 5, 6, 7, 8**, individually, in order.
    Use the code-cell heading numbers; the introductory Markdown is not counted.
    Code cell 1 is MODEL SELECTION & RUNTIME CONFIGURATION. Stop on an error; report the redacted error.
-6. Code cell 6 must print `SUPERVISOR HEALTHY ON PORT 8081`; code cell 7 prints
-   `TAILSCALE TCP FORWARDING CONFIGURED` and `Remote URL: http://100.x.y.z:8081`.
+5. Code cell 6 must print `SUPERVISOR HEALTHY ON PORT 8081`; code cell 7 prints
+   `CLOUDFLARE QUICK TUNNEL ONLINE` and the temporary `Remote URL`.
    Code cell 8 must print the manifest and `WORKER READY FOR LOCAL ACCEPTANCE`.
-7. Return the code cell 7 remote URL (contains the Tailscale IP), code cell 8 manifest,
-   and confirmation that the bearer token is in the local `.env`. Do not return
-   the Tailscale auth key. No manual local harness command is required yet.
-8. Leave the interactive session running for acceptance. **Do not Run All, Save
+6. Return the code cell 7 remote URL, code cell 8 manifest, and confirmation
+   that the bearer token is in the local `.env`. Do not send the bearer token.
+   No manual local harness command is required yet. The Cloudflare URL permits
+   startup/health checks; its SSE limit blocks full streaming acceptance.
+7. Leave the interactive session running for the bounded checks. **Do not Run All, Save
    & Run All, rerun code cells 1-7, run inference probes, restart the kernel, or run
    code cell 9 while FreeCompute uses the worker.** After acceptance finishes, set
    `CONFIRM_SHUTDOWN = True`, run code cell 9, then click Kaggle **Stop Session**.
 
 A stopped model or disconnected CLI is not a stopped Kaggle GPU session.
-Account quota/settings/permission and actual tailnet reachability remain external
+Account quota/settings/permission and actual tunnel reachability remain external
 observations. A local ready marker does not prove Windows-to-Kaggle connectivity.
 
 ## Local composition after the endpoint is returned
@@ -113,7 +119,7 @@ ignored local config from these declarations with the returned private URL:
 ```yaml
 selected_profile: kaggle-qwen-historical-64k
 selected_worker: kaggle-qwen
-transport: tailscale
+transport: cloudflare
 request_timeout_seconds: 900
 model_profiles:
   - profile_id: kaggle-qwen-historical-64k
@@ -128,7 +134,7 @@ workers:
   - worker_id: kaggle-qwen
     location: kaggle
     engine: llama.cpp
-    url: http://127.0.0.1:8081 # replace locally with the returned Tailscale URL
+    url: http://127.0.0.1:8081 # replace locally with the returned Cloudflare URL
     api_key_env: FREECOMPUTE_API_KEY
     profiles: [kaggle-qwen-historical-64k]
     concurrency_limit: 1
@@ -164,9 +170,8 @@ still require their individual interactive approvals.
   not repeated for this notebook/documentation/test-only patch.
 
 Notebook control paths use local fakes; they do not execute CUDA, download model
-weights, join a tailnet or launch an inference worker. The Windows `tailscale`
-command was not available on PATH during preparation; the user must install or
-open Tailscale and connect this PC before starting the GPU session.
+weights, start a tunnel or launch an inference worker. The user selected the
+Cloudflare route; no local Tailscale installation is required for its startup checks.
 
 ## Unverified real acceptance ledger
 
@@ -181,7 +186,8 @@ is made at this stage.
 ## Transport references inspected
 
 - [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
-  explicitly exclude SSE. Do not choose the shipped Quick Tunnel for acceptance.
+  explicitly exclude SSE. This requested second route cannot complete the
+  streaming acceptance; record that result as blocked, not passed.
 - [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
   documents private raw TCP forwarding. The retained 1.76.6 CLI implementation
   supports `serve --bg --tcp` and `up --auth-key=file:...`:

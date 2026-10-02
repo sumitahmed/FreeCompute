@@ -20,13 +20,13 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
         self.output = io.StringIO()
         self.bearer, self.tailkey = 'fixture-bearer', 'fixture-tailkey'
 
-    def configuration(self):
+    def configuration(self, transport='cloudflare'):
         secrets = { 'FREECOMPUTE_API_KEY': self.bearer, 'TAILSCALE_AUTHKEY': self.tailkey }
         module = types.ModuleType('kaggle_secrets')
         module.UserSecretsClient = lambda: types.SimpleNamespace(get_secret=secrets.__getitem__)
         state = {}
         with patch.dict(sys.modules, kaggle_secrets=module), contextlib.redirect_stdout(self.output):
-            exec(self.cells[1], state)
+            exec(self.cells[1].replace("TRANSPORT = 'cloudflare'", f"TRANSPORT = '{transport}'"), state)
         return state
 
     def test_wrappers_compile_and_match_canonical_supervisor_and_scrubber(self):
@@ -53,11 +53,17 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
         self.assertEqual(cfg['REVISION'], '3f101cd22b7999228bbd5d79a33975414eb9758b')
         self.assertEqual((cfg['SPLIT_MODE'], cfg['TENSOR_SPLIT'], cfg['CACHE_TYPE_K'], cfg['CACHE_TYPE_V']),
                          ('layer', '1,1', 'f16', 'f16'))
-        self.assertEqual(cfg['TRANSPORT'], 'tailscale')
+        self.assertEqual(cfg['TRANSPORT'], 'cloudflare')
+        self.assertEqual(cfg['TAILSCALE_AUTHKEY'], '')
         self.assertFalse(cfg['USE_DATASET_CACHE'])
         with contextlib.redirect_stdout(self.output):
-            state['print'](self.bearer, self.tailkey)
+            state['print'](self.bearer)
         self.assertNotIn(self.bearer, self.output.getvalue())
+
+    def test_tailscale_mode_registers_its_optional_secret(self):
+        state = self.configuration('tailscale')
+        with contextlib.redirect_stdout(self.output):
+            state['print'](self.tailkey)
         self.assertNotIn(self.tailkey, self.output.getvalue())
 
     def test_build_fetches_and_checks_out_pin_before_cmake(self):
@@ -80,7 +86,7 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
             self.assertEqual(commands[3][0], 'cmake')
 
     def test_transport_forwards_tcp_and_removes_key_file_without_exposing_it(self):
-        state = self.configuration()
+        state = self.configuration('tailscale')
         process = Mock()
         process.poll.return_value = None
         with tempfile.TemporaryDirectory() as directory:
@@ -107,7 +113,7 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
             self.assertNotIn(self.tailkey, self.output.getvalue())
 
     def test_transport_failure_scrubs_error_and_cleans_up(self):
-        state = self.configuration()
+        state = self.configuration('tailscale')
         process = Mock()
         process.poll.return_value = None
         with tempfile.TemporaryDirectory() as directory:
@@ -125,6 +131,29 @@ class KaggleNotebookAcceptanceTests(unittest.TestCase):
             self.assertNotIn(self.tailkey, str(error.exception))
             self.assertFalse((scratch / 'tailscale-auth.key').exists())
             process.terminate.assert_called_once()
+
+    def test_cloudflare_uses_bearer_only_and_reports_url(self):
+        state = self.configuration()
+        process = Mock()
+        process.poll.return_value = None
+        with tempfile.TemporaryDirectory() as directory:
+            scratch = Path(directory)
+            (scratch / 'cloudflared').touch()
+            state.update(SCRATCH=scratch, supervisor_proc=process, llama_proc=process)
+            tunnel = 'https://' + 'example-acceptance' + '.trycloudflare.com'
+            process.stdout = io.StringIO('Started at ' + tunnel + '\n')
+            def start(cmd, **kwargs):
+                self.assertIn('--protocol', cmd)
+                return process
+            with patch.object(subprocess, 'Popen', side_effect=start), \
+                 patch.object(subprocess, 'run') as run, contextlib.redirect_stdout(self.output):
+                exec(self.cells[7], state)
+            run.assert_not_called()
+            self.assertEqual(state['remote_url'], tunnel)
+            self.assertIn(tunnel, self.output.getvalue())
+            self.assertNotIn(self.bearer, self.output.getvalue())
+            self.assertNotIn(self.tailkey, self.output.getvalue())
+            self.assertFalse((scratch / 'cloudflared.log').exists())
 
     def test_readiness_authenticates_and_never_generates(self):
         state = self.configuration()
