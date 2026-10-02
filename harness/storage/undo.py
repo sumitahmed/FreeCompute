@@ -122,4 +122,4 @@ class UndoManager:
         return scrubber.scrub(self.snapshots[-1].diff or "No recorded diff text for this operation.") if self.snapshots else None
 
     def get_history(self, limit=10):
-        return scrubber.structured([s.to_dict() for s in reversed(self.snapshots[-limit:])])
+        return scrubber.structured([dict(s.to_dict(), has_backup=s.backup_path is not None) for s in reversed(self.snapshots[-limit:])])

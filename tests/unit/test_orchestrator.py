@@ -22,7 +22,7 @@ class TestAgentOrchestrator(unittest.TestCase):
             # Setup dummy file
             test_file = "src/app.py"
             registry = ToolRegistry(workspace_root=tmpdir)
-            registry.execute("write_file", {"path": test_file, "content": "x = 10\n"})
+            registry.execute("write_file", {"path": test_file, "content": "x = 10\n"}, approval_callback=lambda *_: True)
 
             journal = TaskJournal(journal_dir=tmpdir)
             session_tracker = SessionTracker()

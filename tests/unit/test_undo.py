@@ -43,7 +43,8 @@ class TestUndoManager(unittest.TestCase):
         self.assertEqual(target_file.read_text(encoding="utf-8"), "def hello():\n    return 'modified'\n")
 
         # 4. Trigger undo
-        res = self.undo_mgr.undo_last()
+        self.undo_mgr.record_post_change(self.undo_mgr.snapshots[-1])
+        res = self.undo_mgr.undo_last(approval_callback=lambda *_: True)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["action"], "restored")
 
@@ -66,7 +67,8 @@ class TestUndoManager(unittest.TestCase):
         self.assertTrue(new_file.exists())
 
         # 3. Trigger undo
-        res = self.undo_mgr.undo_last()
+        self.undo_mgr.record_post_change(self.undo_mgr.snapshots[-1])
+        res = self.undo_mgr.undo_last(approval_callback=lambda *_: True)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["action"], "deleted")
 

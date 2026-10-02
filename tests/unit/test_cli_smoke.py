@@ -156,7 +156,8 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("- x = 1", last_diff)
 
         # Undo
-        res = undo_mgr.undo_last()
+        undo_mgr.record_post_change(undo_mgr.snapshots[-1])
+        res = undo_mgr.undo_last(approval_callback=lambda *_: True)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["action"], "restored")
         self.assertEqual(sample.read_text(encoding="utf-8"), "x = 1\n")

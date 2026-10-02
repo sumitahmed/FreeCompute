@@ -19,6 +19,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+from harness.security import safe_print as print, scrubber
 import argparse
 import asyncio
 import json

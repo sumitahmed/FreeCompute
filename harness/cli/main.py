@@ -4,6 +4,7 @@ Provides the local-first coding harness, tool approvals, skill dispatch,
 transactional undo, image generation, and Kaggle/GPU telemetry.
 """
 
+from harness.security import safe_print as print
 import argparse
 import os
 import sys
@@ -72,15 +73,15 @@ def handle_approval_prompt(tool_name: str, args: Dict[str, Any], fmt: TerminalFo
 
     while True:
         try:
-            choice = input(fmt.bold("\nApprove this action? [Y/n]: ")).strip().lower()
+            choice = input(fmt.bold("\nApprove this action? [y/N]: ")).strip().lower()
         except (KeyboardInterrupt, EOFError):
             print(fmt.red("\nAction rejected by user."))
             return False
 
-        if choice in ("", "y", "yes"):
+        if choice in ("y", "yes"):
             print(fmt.green("Action APPROVED."))
             return True
-        elif choice in ("n", "no"):
+        elif choice in ("", "n", "no"):
             print(fmt.red("Action REJECTED."))
             return False
         print("Please enter 'y' to approve or 'n' to reject.")
@@ -96,8 +97,8 @@ def print_status_telemetry(client: Any, session_tracker: SessionTracker, quota_l
         print("\n" + fmt.cyan("--- REMOTE RUNTIME & QUOTA TELEMETRY ---"))
         print(f"Status           : {fmt.green(h.status.upper()) if h.status == 'healthy' else fmt.red(h.status.upper())}")
         print(f"Connected Uptime : {st['connected_uptime_formatted']}")
-        print(f"Container Age    : {st['container_uptime_formatted']} (12h Kaggle container cutoff)")
-        print(f"12h Cap Remaining: {st['remaining_12h_formatted']}")
+        print(f"Session Age Est  : {st['container_uptime_formatted']} (source: {st['session_age_source']})")
+        print(f"12h Assumption   : {st['remaining_12h_formatted']}")
         print(f"Weekly Quota Est : {qt['estimated_remaining_hours']}h remaining (last observed: {qt['last_observed_hours']}h)")
         if h.gpus:
             print("GPU Allocations  :")
@@ -200,7 +201,7 @@ def run_interactive_repl(
             continue
 
         if cmd == "/undo":
-            res = undo_mgr.undo_last()
+            res = undo_mgr.undo_last(approval_callback=lambda name, args: handle_approval_prompt(name, args, fmt))
             if res.get("status") == "success":
                 action = res.get("action", "restored")
                 path = res.get("file_path", "")
@@ -364,12 +365,12 @@ def run_interactive_repl(
             duration = time.time() - turn_start_time
             ttft_ms = ((first_token_time - turn_start_time) * 1000.0) if first_token_time else 0.0
             if token_count > 0:
-                fmt.print_streaming_stats(ttft_ms=ttft_ms, total_tokens=token_count, duration_sec=duration)
+                fmt.print_streaming_stats(ttft_ms=result.get("ttft_ms") or ttft_ms, total_tokens=(result.get("usage") or {}).get("completion_tokens"), duration_sec=duration)
             print()
 
         except KeyboardInterrupt:
             orchestrator.cancellation_token.cancel()
-            print(fmt.yellow("\n[CANCELLED] Task cancelled by user (cooperative interrupt)."))
+            print(fmt.yellow("\n[STOP REQUESTED] Local loop interrupted; remote inference outcome unknown."))
         except UnsupportedCapabilityError as exc:
             print(fmt.red(f"\n[CAPABILITY ERROR] {exc}"))
         except Exception as exc:
@@ -377,7 +378,7 @@ def run_interactive_repl(
             print(fmt.red(f"\n[ERROR] Task execution failed: {type(exc).__name__}: {clean_err}"))
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(
         prog="freecompute",
         description="FreeCompute: Local-first AI agent harness powered by remote GPU inference.",
@@ -392,6 +393,7 @@ def main():
     parser.add_argument("--prompt", type=str, default="", help="Prompt for direct image or task execution")
     args = parser.parse_args()
 
+    scrubber.register_secret(args.api_key)
     config = HarnessConfig.load(args.config)
     if args.remote_url:
         config.remote_url = args.remote_url
@@ -417,7 +419,7 @@ def main():
     undo_mgr = UndoManager(workspace_root=workspace_root, storage_dir=config.journal_dir)
     skills_mgr = SkillManager(workspace_root=workspace_root)
     prompt_builder = PromptBuilder()
-    tool_registry = ToolRegistry(workspace_root=workspace_root)
+    tool_registry = ToolRegistry(workspace_root=workspace_root, undo_manager=undo_mgr)
 
     # Model providers
     llama_prov = LlamaCppProvider(
@@ -426,7 +428,7 @@ def main():
         model_alias=config.model_alias,
         timeout_seconds=config.request_timeout_seconds,
     )
-    comfy_prov = ComfyUIProvider(server_url=config.image_server_url)
+    comfy_prov = ComfyUIProvider(server_url=config.image_server_url, workspace_root=workspace_root)
 
     if args.observe_quota is not None:
         quota_ledger.set_user_observed_balance(args.observe_quota)
@@ -474,6 +476,14 @@ def main():
         comfy_prov=comfy_prov,
         fmt=fmt,
     )
+
+
+def main():
+    try:
+        _main()
+    except Exception as exc:
+        print(f"FreeCompute error: {scrubber.scrub(exc)}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
