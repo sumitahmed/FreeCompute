@@ -26,22 +26,16 @@ FreeCompute bridges that free compute to your local terminal. Instead of frying 
 
 ### 1. Launch the Remote GPU Server
 
-1. Open the [FreeCompute Kaggle Notebook](https://www.kaggle.com/code/sumitahmed3/relayforge) (or upload `kaggle/freecompute_dual_gpu_server.ipynb`).
-2. In the right settings panel:
-   - Set **Accelerator** to **GPU T4 x2**.
-   - Toggle **Internet** to **ON**.
-3. (Optional) In **Cell 2**, choose your model preset (Qwen 3.8-27B Abliterated is active by default; Qwen 2.5 Coder 32B, DeepSeek-R1 Distill 32B, and Mistral 24B are ready to uncomment).
-4. Click **Run All**. Once loaded (~6 mins first cold build, ~30s on restarts), Cell 8 prints your connection command:
+1. Open the [FreeCompute Kaggle Notebook](https://www.kaggle.com/code/sumitahmed3/relayforge) (or upload `kaggle/universal_dual_gpu_server.ipynb`).
+2. Set Accelerator to **GPU T4 x2** and toggle Internet to **ON**.
+3. Run all cells. Once loaded, it prints your tunnel URL:
    ```text
    ======================================================================
-     ⚡ FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE (HTTP/2)
+     FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE
    ======================================================================
      Public URL : https://your-tunnel-url.trycloudflare.com
-     API Key    : your-session-key
+     API Key    : your-bearer-token
    ======================================================================
-
-   Run locally in PowerShell:
-   freecompute --remote-url "https://your-tunnel-url.trycloudflare.com" --api-key "your-session-key"
    ```
 
 ### 2. Install FreeCompute Locally

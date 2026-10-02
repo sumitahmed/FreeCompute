@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "FreeCompute System Architecture",
+    "output": ".archify/architecture-freecompute-20260930-234700/freecompute.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/sumitahmed/FreeCompute.git",
+      "revision": "e385dcd585d3fcdcc9634a52c1cd6bd3102e625d"
+    }
+  },
+  "components": [
+    {
+      "id": "developer",
+      "type": "external",
+      "label": "Developer",
+      "sublabel": "Interactive Terminal User",
+      "pos": [40, 120],
+      "size": [130, 64],
+      "sources": [
+        { "path": "harness/cli/main.py", "line": 150, "end_line": 165, "label": "Interactive REPL" }
+      ]
+    },
+    {
+      "id": "cli_repl",
+      "type": "frontend",
+      "label": "FreeCompute CLI",
+      "sublabel": "REPL, Approvals & Scrubber",
+      "tag": "Approval Gate",
+      "pos": [250, 120],
+      "size": [150, 64],
+      "sources": [
+        { "path": "harness/cli/main.py", "line": 37, "end_line": 87, "label": "Approval Prompt" }
+      ]
+    },
+    {
+      "id": "orchestrator",
+      "type": "backend",
+      "label": "Agent Orchestrator",
+      "sublabel": "Multi-Turn Tool Loop",
+      "pos": [480, 120],
+      "size": [150, 64],
+      "sources": [
+        { "path": "harness/core/orchestrator.py", "line": 78, "end_line": 130, "label": "Run Task Loop" }
+      ]
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "Kaggle Brain Client",
+      "sublabel": "SSE Stream Parser",
+      "pos": [710, 120],
+      "size": [150, 64],
+      "sources": [
+        { "path": "harness/core/client.py", "line": 95, "end_line": 175, "label": "SSE Stream Chat" }
+      ]
+    },
+    {
+      "id": "undo_journal",
+      "type": "database",
+      "label": "Undo & Task Journal",
+      "sublabel": "Snapshots & Quota Ledger",
+      "tag": "/undo Rollback",
+      "pos": [250, 270],
+      "size": [150, 64],
+      "sources": [
+        { "path": "harness/storage/undo.py", "line": 25, "end_line": 75, "label": "Undo Snapshots" }
+      ]
+    },
+    {
+      "id": "tools_sandbox",
+      "type": "security",
+      "label": "Sandboxed Tools",
+      "sublabel": "edit_file / write / exec",
+      "tag": "Path Traversal Safe",
+      "pos": [480, 270],
+      "size": [150, 64],
+      "sources": [
+        { "path": "harness/tools/sandbox.py", "line": 20, "end_line": 60, "label": "Workspace Sandbox" }
+      ]
+    },
+    {
+      "id": "transport",
+      "type": "cloud",
+      "label": "Cloudflare Tunnel",
+      "sublabel": "Edge Ingress (HTTP/2 TCP)",
+      "tag": "Zero Open Ports",
+      "pos": [710, 270],
+      "size": [150, 64],
+      "sources": [
+        { "path": "kaggle/freecompute_dual_gpu_server.ipynb", "line": 60, "end_line": 80, "label": "Secure Transport Bridge" }
+      ]
+    },
+    {
+      "id": "gpu_cluster",
+      "type": "database",
+      "label": "Dual Tesla T4 VRAM",
+      "sublabel": "CUDA0 + CUDA1 (30 GB)",
+      "tag": "50/50 Layer Split",
+      "pos": [250, 420],
+      "size": [150, 64],
+      "sources": [
+        { "path": "kaggle/freecompute_dual_gpu_server.ipynb", "line": 20, "end_line": 40, "label": "Dual-GPU Hardware" }
+      ]
+    },
+    {
+      "id": "llama_server",
+      "type": "backend",
+      "label": "llama-server",
+      "sublabel": "CUDA Engines (:8080)",
+      "tag": "65,536 Tokens",
+      "pos": [480, 420],
+      "size": [150, 64],
+      "sources": [
+        { "path": "kaggle/freecompute_dual_gpu_server.ipynb", "line": 35, "end_line": 55, "label": "Engine Process" }
+      ]
+    },
+    {
+      "id": "supervisor",
+      "type": "security",
+      "label": "Remote Supervisor",
+      "sublabel": "Auth Proxy (:8081) & Health",
+      "tag": "Bearer Auth",
+      "pos": [710, 420],
+      "size": [150, 64],
+      "sources": [
+        { "path": "kaggle/freecompute_dual_gpu_server.ipynb", "line": 50, "end_line": 75, "label": "Supervisor HTTP Proxy" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Local Workstation (Authoritative Source of Truth)",
+      "wraps": ["cli_repl", "orchestrator", "client", "undo_journal", "tools_sandbox"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Local Execution & Undo Sandbox",
+      "wraps": ["tools_sandbox", "undo_journal"]
+    },
+    {
+      "kind": "region",
+      "label": "Remote Untrusted GPU Compute (Kaggle Dual T4)",
+      "wraps": ["supervisor", "llama_server", "gpu_cluster"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "dev-to-repl",
+      "from": "developer",
+      "to": "cli_repl",
+      "label": "user input",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "repl-to-orch",
+      "from": "cli_repl",
+      "to": "orchestrator",
+      "label": "task dispatch",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "orch-to-client",
+      "from": "orchestrator",
+      "to": "client",
+      "label": "stream prompt",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "orch-to-tools",
+      "from": "orchestrator",
+      "to": "tools_sandbox",
+      "label": "tool approval",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "tools-to-undo",
+      "from": "tools_sandbox",
+      "to": "undo_journal",
+      "label": "snapshots",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "client-to-trans",
+      "from": "client",
+      "to": "transport",
+      "label": "HTTPS / SSE",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "trans-to-super",
+      "from": "transport",
+      "to": "supervisor",
+      "label": "tunnel :8081",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "super-to-llama",
+      "from": "supervisor",
+      "to": "llama_server",
+      "label": "proxy :8080",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "llama-to-gpus",
+      "from": "llama_server",
+      "to": "gpu_cluster",
+      "label": "tensor split",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Local Authority & Zero-Trust Remote",
+      "items": [
+        "All filesystem operations, tools, undo history, and terminal approvals execute on the user's PC.",
+        "The remote GPU container is an untrusted inference brain; it has zero access to local files or credentials.",
+        "SecretScrubber redacts API keys, ephemeral tunnel URLs, and credentials before console display."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dual-GPU Remote Inference",
+      "items": [
+        "Utilizes free Kaggle weekly compute (30 hours/week dual Tesla T4 GPUs with 30 GB total VRAM).",
+        "llama-server balances layers 50/50 across CUDA0 and CUDA1 with 64K KV cache capacity.",
+        "Supervisor proxy guards port :8081 with Bearer token authentication and health/VRAM telemetry."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Resilient Ingress Transport",
+      "items": [
+        "Cloudflare HTTP/2 tunnel provides secure public edge ingress over standard TCP port 443.",
+        "Enforcing HTTP/2 protocol prevents UDP/QUIC packet drops common on cloud sandbox firewalls.",
+        "Seamless single-command local CLI connectivity via --remote-url without local port forwarding."
+      ]
+    }
+  ]
+}

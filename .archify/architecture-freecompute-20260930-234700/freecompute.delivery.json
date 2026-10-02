@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b9b79e41-6991-44f1-8c04-59d7b946f508",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\sksum\\OneDrive\\Documents\\OSS Projects\\Local AI via Collab\\.archify\\architecture-freecompute-20260930-234700\\candidate.json",
+  "output": "C:\\Users\\sksum\\OneDrive\\Documents\\OSS Projects\\Local AI via Collab\\.archify\\architecture-freecompute-20260930-234700\\freecompute.html",
+  "specification": {
+    "sha256": "451453c3ce86440edf001aa9a073783a286817a851dd5b06b64dd7eecbc03ad8",
+    "bytes": 7638
+  },
+  "artifact": {
+    "sha256": "c13c757cbe8414bd4665c8614a0f7fb9d5f1ae5a87487bca6384bdc173c3349f",
+    "bytes": 771318
+  }
+}
