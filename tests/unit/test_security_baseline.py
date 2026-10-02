@@ -102,6 +102,19 @@ class SafetyBaselineTests(unittest.TestCase):
             self.undo.record_pre_change(str(link))
         self.assertEqual(grep_search("needle", workspace_root=str(self.workspace))["total_matches"], 0)
 
+    @unittest.skipUnless(os.name == "nt", "Windows junction test")
+    def test_windows_junction_search_and_snapshot_denied(self):
+        import _winapi
+        outside = self.root / "external"
+        outside.mkdir()
+        (outside / "private.txt").write_text("needle outside")
+        junction = self.workspace / "junction"
+        _winapi.CreateJunction(str(outside), str(junction))
+        with self.assertRaises(SandboxSecurityViolation):
+            self.undo.record_pre_change(str(junction / "private.txt"))
+        self.assertEqual(grep_search("needle", workspace_root=str(self.workspace))["total_matches"], 0)
+        junction.rmdir()
+
     def test_snapshot_protected_and_outside_paths_denied(self):
         for name in (".env.local", "../outside.txt"):
             with self.assertRaises(SandboxSecurityViolation):
@@ -165,7 +178,7 @@ class SafetyBaselineTests(unittest.TestCase):
             stream = StreamRedactor(source)
             emitted = stream.feed("prefix " + secret[:split]) + stream.feed(secret[split:] + " suffix ") + stream.finish()
             self.assertNotIn(secret, emitted)
-            self.assertNotIn(secret[:split], emitted.replace("[REDACTED_SECRET]", ""))
+            self.assertEqual(emitted, "prefix [REDACTED_SECRET] suffix ")
         scrubber.register_secret(secret)
         journal = TaskJournal(str(self.root / "journal"))
         journal.record_event("run", "test", {"arguments": secret, "reasoning": secret, "url": secret})
