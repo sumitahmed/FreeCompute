@@ -260,25 +260,33 @@ class ToolRegistry:
         tool = self.tools.get(tool_name)
         return tool_name in {"write_file", "edit_file", "run_command"} or tool.requires_approval if tool else True
 
+    def validate_arguments(self, tool_name, arguments):
+        """Shared schema validation for durable proposals and the final execution gate."""
+        tool = self.tools.get(tool_name)
+        if not tool:
+            raise ValueError("Unknown tool")
+        if not isinstance(arguments, dict):
+            raise ValueError("Arguments must be an object")
+        arguments = copy.deepcopy(arguments)
+        properties = tool.parameters.get("properties", {})
+        if set(arguments) - set(properties):
+            raise ValueError("Unknown tool argument")
+        if any(k not in arguments for k in tool.parameters.get("required", [])):
+            raise ValueError("missing required argument")
+        types = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
+        for name, value in arguments.items():
+            expected = types.get(properties[name].get("type"))
+            if expected and (not isinstance(value, expected) or expected is int and isinstance(value, bool)):
+                raise ValueError("Invalid argument type")
+        return arguments
+
     def execute(self, tool_name, arguments, *, approval_callback=None, cancellation_token=None):
         """The authoritative gate, shared by interactive and headless callers."""
         tool = self.tools.get(tool_name)
         if not tool:
             return {"error": "Unknown tool"}
         try:
-            if not isinstance(arguments, dict):
-                raise ValueError("Arguments must be an object")
-            arguments = copy.deepcopy(arguments)
-            properties = tool.parameters.get("properties", {})
-            if set(arguments) - set(properties):
-                raise ValueError("Unknown tool argument")
-            if any(k not in arguments for k in tool.parameters.get("required", [])):
-                raise ValueError("missing required argument")
-            types = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
-            for name, value in arguments.items():
-                expected = types.get(properties[name].get("type"))
-                if expected and (not isinstance(value, expected) or expected is int and isinstance(value, bool)):
-                    raise ValueError("Invalid argument type")
+            arguments = self.validate_arguments(tool_name, arguments)
             target = None
             before = None
             if tool_name in {"write_file", "edit_file"}:
