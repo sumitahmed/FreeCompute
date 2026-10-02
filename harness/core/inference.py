@@ -86,6 +86,7 @@ class InferenceBroker:
 
     def _finish(self, task, attempt_id, lease, response, usage, ttft_ms, remote_finished):
         saved = persistent_response(response)
+        saved["remote_outcome"] = "completed" if remote_finished and response.stream_complete else "not_started" if remote_finished else "unknown"
         with self.store.transaction() as db:
             state = "failed" if response.error else "completed"
             db.execute("UPDATE inference_attempts SET state=?,response=?,usage=?,error=?,ended_at=? WHERE id=?",
@@ -190,13 +191,43 @@ class InferenceBroker:
                 raise AllocationUnavailable("Cannot reconcile an active local inference")
         return self.scheduler.reconcile(resolver, lease_id)
 
+    def recover_image(self, task):
+        from harness.storage.undo import file_hash
+        from harness.tools.sandbox import validate_workspace_path
+        receipt = self.store.one("SELECT * FROM inference_attempts WHERE task_id=? AND profile_id=? AND context_epoch=? AND state IN ('completed','failed') ORDER BY rowid DESC LIMIT 1",
+                                 (task["id"], task["profile_id"], task["context_epoch"]))
+        if not receipt:
+            return None
+        saved = json.loads(receipt["response"])
+        if saved["requires_reproposal"] or saved["response"]["error"]:
+            raise ValueError("Saved image request failed or was redacted; inspect its receipt, without regenerating")
+        try:
+            value = strict_json(saved["response"]["text"])
+            artifact = value["artifact"]
+            target = validate_workspace_path(artifact["path"], str(self.store.workspace), True)
+            if file_hash(target) != artifact["sha256"]:
+                raise ValueError("changed artifact")
+            result = value["result"]
+            if validate_workspace_path(result["file_path"], str(self.store.workspace), True) != target:
+                raise ValueError("changed artifact identity")
+        except (ValueError, TypeError, KeyError):
+            raise ValueError("Recorded image artifact is missing, changed or has no witness; inspect the job/file, without regeneration") from None
+        return result, receipt["id"]
+
     def image(self, task, profile, prompt, cancellation):
         if "image_gen" not in profile.capabilities:
             raise ValueError("Select an image-generation profile for this operation")
         attempt, lease, engine = self._begin(task, profile, {"operation": "image", "prompt": prompt}, {"image_gen"}, cancellation)
         try:
             result = engine.generate(profile, prompt, cancellation)
-            response = InferenceResponse("image job completed", finish_reason="stop", stream_complete=True)
+            from harness.storage.undo import file_hash
+            from harness.tools.sandbox import validate_workspace_path
+            target = validate_workspace_path(result["file_path"], str(self.store.workspace), True)
+            digest = file_hash(target)
+            if digest is None:
+                raise ValueError("Image engine returned no local artifact; no success receipt accepted")
+            payload = {"result": result, "artifact": {"path": str(target.relative_to(self.store.workspace)), "sha256": digest}}
+            response = InferenceResponse(encode(payload), finish_reason="stop", stream_complete=True)
             self._finish(task, attempt, lease, response, None, None, True)
             return scrubber.structured(result)
         except Exception as exc:

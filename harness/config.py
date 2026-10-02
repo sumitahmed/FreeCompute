@@ -39,7 +39,7 @@ class WorkerConnection(BaseModel):
     concurrency_limit: int = Field(default=1, ge=1, le=64, strict=True)
     resource_pool: str = ""
     resources: set[str] = Field(default_factory=set)
-    timeout_seconds: int = Field(default=900, gt=0, strict=True)
+    timeout_seconds: Optional[int] = Field(default=None, gt=0, strict=True)
 
     @field_validator("url")
     @classmethod

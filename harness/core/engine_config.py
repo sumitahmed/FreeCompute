@@ -32,14 +32,18 @@ def configured_engines(config, workspace):
         scrubber.register_secret(key)
         scrubber.register_secret(connection.url)
         if connection.engine == "llama.cpp":
-            adapter = LlamaCppEngine(LlamaCppProvider(connection.url, key, models[0].model, connection.timeout_seconds).client)
+            adapter = LlamaCppEngine(LlamaCppProvider(connection.url, key, models[0].model, connection.timeout_seconds or config.request_timeout_seconds).client)
         elif connection.engine == "openai-compatible":
-            adapter = OpenAICompatibleEngine(OpenAICompatibleProvider(connection.url, key, models[0].model, connection.timeout_seconds,
+            adapter = OpenAICompatibleEngine(OpenAICompatibleProvider(connection.url, key, models[0].model, connection.timeout_seconds or config.request_timeout_seconds,
                                                                      code_tools="code_tools" in capabilities))
         else:
             if key:
                 raise ValueError("The existing ComfyUI transport has no bearer-auth contract; use an appropriately protected endpoint")
-            adapter = ComfyUIEngine(ComfyUIProvider(connection.url, workspace_root=workspace))
+            if connection.timeout_seconds is not None:
+                raise ValueError("The existing ComfyUI workflow keeps its 180-second polling limit; custom timeout configuration is unsupported")
+            if len({profile.model for profile in models}) != 1:
+                raise ValueError("One ComfyUI attachment uses one existing workflow/model identity; arbitrary checkpoint switching is unsupported")
+            adapter = ComfyUIEngine(ComfyUIProvider(connection.url, workspace_root=workspace), model_identity=models[0].model)
         worker = Worker(connection.worker_id, connection.location, connection.engine, capabilities,
                         concurrency_limit=connection.concurrency_limit, resource_pool=connection.resource_pool, resources=connection.resources)
         attachments.append((worker, models, adapter))

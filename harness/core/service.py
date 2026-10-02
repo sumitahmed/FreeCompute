@@ -177,12 +177,14 @@ class CoreService:
     def _summary(self, task_id, usage=None, ttft_ms=None):
         task = self.task(task_id)
         state = NativeState.recover(task["driver"])
+        latest = self.store.one("SELECT response FROM inference_attempts WHERE task_id=? ORDER BY rowid DESC LIMIT 1", (task_id,))
+        remote_outcome = (json.loads(latest["response"]).get("remote_outcome", "unknown") if latest and latest["response"] else "unknown" if latest else "not_started")
         return {"status": task["state"], "run_id": task_id, "task_id": task_id, "session_id": task["session_id"],
                 "agent_id": task["agent_id"], "turns": state.turns, "final_answer": task["final_answer"],
                 "usage": usage, "ttft_ms": ttft_ms,
                 "cancellation": {"requested": state.cancellation_requested, "local_stop_confirmed": state.local_stop_confirmed,
                     "remote_cancel_confirmed": state.remote_cancel_confirmed,
-                    "remote_outcome": "unknown" if state.cancellation_requested else "not_requested"},
+                    "remote_outcome": remote_outcome if state.cancellation_requested else "not_requested"},
                 "is_cancelled": state.cancellation_requested}
 
     def _end(self, task_id, state, history, status, answer="", detail="", attempt_id=None):
@@ -490,7 +492,7 @@ class CoreService:
                 adapter = self.registry.engine(row["id"])
                 if isinstance(adapter, ComfyUIEngine) and adapter.provider is self.image_provider:
                     profiles = [self.registry.profile(p["profile_id"]) for p in self.store.all("SELECT profile_id FROM worker_profiles WHERE worker_id=?", (row["id"],))]
-                    self.registry.attach(self.registry.worker(row["id"]), profiles, ComfyUIEngine(self.image_provider))
+                    self.registry.attach(self.registry.worker(row["id"]), profiles, ComfyUIEngine(self.image_provider, model_identity=adapter.model_identity))
 
     def get_health(self):
         worker_id = self.selected_worker or next((r["id"] for r in self.registry.candidates(self.profile.profile_id)), self.worker.worker_id)
@@ -614,8 +616,15 @@ class CoreService:
         profile = self.registry.profile(task["profile_id"])
         state = NativeState.recover(task["driver"])
         try:
+            recovered = self.inference.recover_image(task)
+            if recovered:
+                result, attempt_id = recovered
+                self._event(task, "model.replayed", {"attempt_id": attempt_id})
+                self._end(task_id, state, json.loads(task["history"]), "completed", answer=result["file_path"], attempt_id=attempt_id)
+                return result
             result = self.inference.image(task, profile, scrubber.scrub(task["prompt"]), self.cancellation_token)
-            self._end(task_id, state, json.loads(task["history"]), "completed", answer=result.get("file_path", ""))
+            attempt = self.store.one("SELECT id FROM inference_attempts WHERE task_id=? ORDER BY rowid DESC LIMIT 1", (task_id,))
+            self._end(task_id, state, json.loads(task["history"]), "completed", answer=result.get("file_path", ""), attempt_id=attempt["id"])
             return result
         except QueueWaiting as exc:
             self._end(task_id, state, json.loads(task["history"]), "queued", detail=scrubber.scrub(exc))

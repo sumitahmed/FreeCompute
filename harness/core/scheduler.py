@@ -254,6 +254,9 @@ class Scheduler:
         return self.store.all("SELECT q.*,t.state AS task_state FROM inference_queue q JOIN tasks t ON t.id=q.task_id WHERE q.state IN ('queued','running','quarantined') ORDER BY q.sequence")
 
     def next_task(self):
+        receipt = self.store.one("SELECT q.task_id FROM inference_queue q JOIN tasks t ON t.id=q.task_id JOIN inference_attempts a ON a.task_id=t.id WHERE a.state IN ('completed','failed') AND t.state NOT IN ('completed','failed','malformed','truncated','incomplete','max_turns','context_overflow','cancelled') ORDER BY q.sequence LIMIT 1")
+        if receipt:
+            return receipt["task_id"]
         for row in self.list_queue():
             self.registry.refresh_candidates(row["profile_id"], row["requested_worker"])
         with self.store.transaction() as db:

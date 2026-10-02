@@ -61,8 +61,9 @@ class OpenAICompatibleEngine(LlamaCppEngine):
 class ComfyUIEngine:
     kind = "ComfyUI"
 
-    def __init__(self, provider):
+    def __init__(self, provider, *, model_identity="ComfyUI-default"):
         self.provider = provider
+        self.model_identity = model_identity
         self.identity_hash = fingerprint({"engine": self.kind, "endpoint": provider.server_url})
 
     def get_capabilities(self):
@@ -70,7 +71,8 @@ class ComfyUIEngine:
 
     def describe(self):
         return {"engine": self.kind, "capabilities": ["image_gen"], "streaming": False,
-                "cancellation": "local_wait_only", "remote_cancel_ack": False}
+                "cancellation": "local_wait_only", "remote_cancel_ack": False, "poll_timeout_seconds": 180,
+                "model_identity": self.model_identity, "model_switching": False, "workflow": "existing_default"}
 
     def get_health(self):
         return self.provider.get_health()
@@ -81,6 +83,8 @@ class ComfyUIEngine:
     def generate(self, profile, prompt, cancellation):
         if "image_gen" not in profile.capabilities:
             raise EngineFailure("Profile cannot generate images", remote_not_started=True, kind="capability")
+        if profile.model != self.model_identity:
+            raise EngineFailure("Image profile does not match the attachment's configured workflow/model identity", remote_not_started=True, kind="capability")
         if cancellation.is_cancelled:
             raise EngineFailure("Cancelled before image dispatch", remote_not_started=True, kind="cancelled")
         try:

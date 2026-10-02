@@ -43,6 +43,8 @@ class WorkerRegistry:
         profiles = list(profiles)
         if not profiles:
             raise ValueError("Worker needs at least one model profile")
+        if len({p.profile_id for p in profiles}) != len(profiles):
+            raise ValueError("Duplicate model profile in worker attachment")
         supported = engine.get_capabilities() if hasattr(engine, "get_capabilities") else worker.capabilities
         if not worker.capabilities <= frozenset(supported):
             raise ValueError("Worker capabilities exceed the adapter's declared support")
