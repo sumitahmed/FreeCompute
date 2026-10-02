@@ -22,7 +22,7 @@ class OpenAICompatibleClient(KaggleBrainClient):
             models = data.get("data")
             if not isinstance(models, list) or any(not isinstance(m, dict) or not isinstance(m.get("id"), str) for m in models):
                 raise ValueError("Invalid compatible model-list response")
-            return RemoteHealth("healthy", raw=scrubber.structured({"models": [m["id"] for m in models]}))
+            return RemoteHealth("healthy", 0, 0, 0, 0, raw=scrubber.structured({"models": [m["id"] for m in models], "telemetry_available": False}))
         except urllib.error.HTTPError as exc:
             exc.close()
             if exc.code in (401, 403):

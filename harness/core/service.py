@@ -486,7 +486,7 @@ class CoreService:
         if health is None:
             from harness.core.models import RemoteHealth
             observation = next(w for w in self.list_workers() if w["worker_id"] == worker_id)
-            health = RemoteHealth(observation["health"], raw=observation["observed_resources"])
+            health = RemoteHealth(observation["health"], 0, 0, 0, 0, raw=observation["observed_resources"])
         if self.session_tracker:
             self.session_tracker.update_from_remote_health(health.raw)
         with self.store.transaction() as db:
