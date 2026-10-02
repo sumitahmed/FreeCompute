@@ -62,6 +62,7 @@ class CoreService:
             self.sessions = SessionManager(self.store, self._publish)
             self.current_session_id = None
             self.quota = self.session_tracker = self.image_provider = None
+            self.legacy_undo = None
             for event in self.store.recover():
                 self._publish(event)
             with self.store.transaction() as db:
@@ -82,6 +83,7 @@ class CoreService:
         from harness.providers.comfyui import ComfyUIProvider
         from harness.telemetry.quota_ledger import QuotaLedger
         from harness.telemetry.session_tracker import SessionTracker
+        from harness.storage.undo import UndoManager
         scrubber.register_secret(config.api_key)
         scrubber.register_secret(config.remote_url)
         scrubber.register_secret(config.image_server_url)
@@ -97,6 +99,8 @@ class CoreService:
             service.session_tracker = SessionTracker()
             # Preserve the existing quota ledger location; it is not task authority.
             service.quota = QuotaLedger(storage_path=str(Path(config.journal_dir) / "quota_ledger.json"))
+            if (Path(config.journal_dir) / "undo_history.json").is_file():
+                service.attach_legacy_undo(UndoManager(str(service.store.workspace), config.journal_dir))
         except BaseException:
             service.close()
             raise
@@ -207,6 +211,7 @@ class CoreService:
                 or state.context_epoch != task["context_epoch"]):
                 raise ValueError("Checkpoint identity/profile/epoch does not match its durable task")
             history = json.loads(task["history"])
+            command = self.store.one("SELECT operation FROM commands WHERE task_id=?", (task_id,))
             self.cancellation_token = CancellationToken()
             if self.quota:
                 self.quota.start_session()
@@ -259,7 +264,17 @@ class CoreService:
                         event = self.store.event(db, task["session_id"], task_id, "task.turn_completed", {"turn": state.turns}, revision=task["revision"])
                         self.store.checkpoint(db, task_id)
                     self._publish(event)
+                    if command and command["operation"] == "undo":
+                        success = all(r.get("status") == "success" for _, r in results)
+                        state.phase = "completed" if success else "failed"
+                        self._end(task_id, state, history, "completed" if success else "failed",
+                                  answer="Snapshot restored" if success else "", detail="Approved restore receipt recorded" if success else encode(results[-1][1]))
+                        break
                     continue
+                if command and command["operation"] in {"undo", "image"}:
+                    state.phase = "failed"
+                    self._end(task_id, state, history, "failed", detail="Manual operation has no recoverable proposal; inspect its receipts rather than requesting text inference")
+                    break
                 if state.turns >= task["max_turns"]:
                     state.phase = "max_turns"
                     self._end(task_id, state, history, "max_turns", detail="No more inference turns permitted")
@@ -364,20 +379,50 @@ class CoreService:
 
     def get_last_diff(self):
         snapshot = self.artifacts.latest()
-        return scrubber.scrub(snapshot["diff"]) if snapshot else None
+        return scrubber.scrub(snapshot["diff"]) if snapshot else self.legacy_undo.get_last_diff() if self.legacy_undo else None
+
+    def attach_legacy_undo(self, manager):
+        self.legacy_undo = manager
+        self.tool_broker.legacy_undo = manager
+        self.tools.register(ToolDefinition("restore_legacy_snapshot", "Restore a preserved legacy snapshot through a durable approval",
+            {"type": "object", "properties": {"snapshot_id": {"type": "string"}}, "required": ["snapshot_id"]},
+            self._restore_legacy, requires_approval=True))
+
+    def _restore_legacy(self, snapshot_id):
+        if not self.legacy_undo or not self.legacy_undo.snapshots or self.legacy_undo.snapshots[-1].snapshot_id != snapshot_id:
+            raise ValueError("Legacy snapshot is no longer current")
+        # The outer durable broker already obtained this single-action approval.
+        return self.legacy_undo.undo_last(approval_callback=lambda *_: True)
 
     def undo_last(self, approval_callback=None):
+        if self._run_lock.locked():
+            raise RuntimeError("Finish/cancel the active task before restoring a snapshot")
         snapshot = self.artifacts.latest()
-        if not snapshot:
+        legacy = self.legacy_undo.snapshots[-1] if self.legacy_undo and self.legacy_undo.snapshots else None
+        if not snapshot and not legacy:
             return {"status": "empty", "message": "No V2 file changes available to undo; legacy undo records are preserved separately"}
-        task_id = self.submit("Restore the most recent sealed snapshot", allowed_tools=["restore_snapshot"])
+        name = "restore_snapshot" if snapshot else "restore_legacy_snapshot"
+        snapshot_id = snapshot["id"] if snapshot else legacy.snapshot_id
+        task_id = self.sessions.submit("Restore the most recent sealed snapshot", self.profile,
+            self.prompt_builder.build_system_content(), [self.tools.tools[name].to_openai_tool()], [name], operation="undo")
         task = self.task(task_id)
         from harness.core.native_driver import Proposal
-        with self.store.transaction() as db:
-            action_id = self.tool_broker.propose(db, task, [Proposal("undo-" + identity(), "restore_snapshot", {"snapshot_id": snapshot["id"]})], 0)[0]
-        result = self.tool_broker.execute(action_id, approval_callback, CancellationToken())
         state = NativeState.recover(task["driver"])
-        self._end(task_id, state, json.loads(task["history"]), "completed" if result.get("status") == "success" else "failed", detail=result.get("message", result.get("error", "")))
+        proposal = Proposal("undo-" + identity(), name, {"snapshot_id": snapshot_id})
+        state.turns, state.phase, state.pending = 1, "pending", [{"call_id": proposal.call_id, "name": name, "arguments": proposal.arguments}]
+        history = json.loads(task["history"]) + [{"role": "assistant", "content": None, "tool_calls": [{"id": proposal.call_id,
+            "type": "function", "function": {"name": name, "arguments": encode(proposal.arguments)}}]}]
+        with self.store.transaction() as db:
+            task = self.store.update_task(db, task_id, driver=state.serialize(), history=history)
+            action_id = self.tool_broker.propose(db, task, [proposal], 1)[0]
+            event = self.store.event(db, task["session_id"], task_id, "tool.proposed", {"action_id": action_id, "tool": name, "arguments": proposal.arguments})
+            self.store.checkpoint(db, task_id)
+        self._publish(event)
+        summary = self.run(task_id, approval_resolver=approval_callback)
+        action = self.store.one("SELECT * FROM actions WHERE id=?", (action_id,))
+        result = json.loads(action["result"]) if action["result"] else {"status": summary["status"]}
+        if summary["status"] == "outcome_unknown":
+            result = dict(result, status="outcome_unknown", action_id=action_id, message="Reconcile the uncertain restore before retry")
         return result
 
     def generate_image(self, prompt):

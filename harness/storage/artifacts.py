@@ -56,7 +56,7 @@ class ArtifactManager:
             raise ValueError("Unknown snapshot")
         return snapshot
 
-    def restore(self, snapshot_id):
+    def prepare_restore(self, snapshot_id):
         snapshot = self.snapshot(snapshot_id)
         if snapshot["state"] != "sealed":
             raise ValueError("Snapshot is not sealed or has already been restored")
@@ -73,6 +73,13 @@ class ArtifactManager:
             content = blob.read_bytes()
             if hashlib.sha256(content).hexdigest() != snapshot["pre_hash"]:
                 raise ValueError("Snapshot backup is corrupt; target preserved")
+        else:
+            content = None
+        return snapshot, target, content
+
+    def restore(self, snapshot_id):
+        snapshot, target, content = self.prepare_restore(snapshot_id)
+        if content is not None:
             replace_bytes(target, content, str(self.store.workspace), snapshot["post_hash"])
         elif target.exists():
             # Absence was recorded intentionally; this deletion is separately approved.

@@ -19,6 +19,7 @@ class DurableToolBroker:
         self.artifacts, self.publish = artifacts, publish
         self._lock = threading.RLock()
         self._fault_hook = fault_hook
+        self.legacy_undo = None
 
     def fault(self, stage, action):
         if self._fault_hook:
@@ -114,8 +115,14 @@ class DurableToolBroker:
                 if action["name"] in {"write_file", "edit_file"}:
                     target = validate_workspace_path(arguments["path"], str(self.store.workspace), True)
                 elif action["name"] == "restore_snapshot":
-                    snapshot = self.artifacts.snapshot(arguments["snapshot_id"])
-                    target = validate_workspace_path(snapshot["target"], str(self.store.workspace), True)
+                    _, target, _ = self.artifacts.prepare_restore(arguments["snapshot_id"])
+                elif action["name"] == "restore_legacy_snapshot":
+                    if not self.legacy_undo or not self.legacy_undo.snapshots or self.legacy_undo.snapshots[-1].snapshot_id != arguments["snapshot_id"]:
+                        raise ValueError("Legacy snapshot identity changed")
+                    snapshot = self.legacy_undo.snapshots[-1]
+                    target = validate_workspace_path(snapshot.file_path, str(self.store.workspace), True)
+                    if not snapshot.sealed or file_hash(target) != snapshot.post_hash:
+                        raise ValueError("Legacy snapshot is unsealed or conflicts with the current file")
                 before = file_hash(target) if target else None
                 if target:
                     with self.store.transaction() as db:
