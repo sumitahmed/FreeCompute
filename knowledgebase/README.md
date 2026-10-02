@@ -2,7 +2,7 @@
 
 Research date: **2026-10-02**. Audited baseline: `main`, `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`.
 
-**Current status:** Stage 1 safety repairs and the **REJECTED** pinned OpenHands experiment are preserved. The qualified native driver and accepted Stage 3 runtime are the baseline for the subsequently authorized minimal V1 engine/worker registry and durable queue/scheduler. Its current implementation, verification and limits are recorded below. This milestone stops for branch review. Delegation, advanced scheduling, GUI, daemon and real GPU/deployment work remain proposed.
+**Current status:** Stage 1 safety repairs and the **REJECTED** pinned OpenHands experiment are preserved. The qualified native driver and accepted Stage 3 runtime are the baseline for the subsequently authorized minimal V1 engine/worker registry and durable queue/scheduler. That bounded backend passed **189 unit + 15 SDK + 28 foundation tests** and fresh installed-wheel acceptance (50 source/install files matched). Evidence and limits are recorded below. This milestone stops for branch review. Delegation, advanced scheduling, GUI, daemon and real GPU/deployment work remain proposed.
 
 Read these in order:
 

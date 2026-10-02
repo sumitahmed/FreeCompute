@@ -150,9 +150,27 @@ does not invent Kaggle uptime/session timers.
 actual-CLI tests passed in 13.959s. These include three deterministic workers,
 real SQLite leases, shared-pool conflicts, two actual concurrent broker requests,
 FIFO/restart/cancel/failure, model routing, ComfyUI download and image receipt
-recovery. Additional migration/process-crash fixtures are part of the full suite.
-Final complete-suite, historical SDK regression and package evidence is recorded
-below after those checks finish; focused passes do not substitute for that gate.
+recovery. Final acceptance on Python 3.12.10:
+
+| Executed check | Result |
+| --- | --- |
+| Complete unit suite | **189 passed in 42.993s**: prior 140 unchanged, 31 worker/scheduler, 12 engine/CLI, 3 migration and 3 new process-recovery checks |
+| Original pinned SDK characterization | **15 passed in 7.054s**; its guard blocked one external tokenizer metadata attempt |
+| Preserved SDK foundation suite | **28 passed in 139.434s**; zero external attempts reported; negative adoption-gate tests still measure rejection, not qualification |
+| Repository security scanner | Exit 0; 152 files scanned, zero configured secret-pattern findings |
+| Git whitespace/scope check | No whitespace errors; phase contains only the 26 inventoried paths; original tests/notebooks/SDK fixtures unchanged |
+| Fresh PEP 517 wheel + separate target install | All **50** packaged `harness` Python files match working source and installed bytes |
+| Installed imports and CLI | **49** default modules imported from the target; optional SDK adapter excluded from the default import pass; no OpenHands/LiteLLM loaded or mandatory SDK dependency |
+| Actual installed `freecompute.exe` | Help, three-worker visibility, plain model + selected code worker, approved write and real Python test (exit 0, two receipts), second-process resume with zero additional inference/receipt changes, persisted queue restart/dispatch, one correlated ComfyUI PNG download |
+
+Installed workflow: four text requests total (three edit/chat turns plus one
+explicit queued dispatch), one image job, and image bytes matched the fixture.
+Wheel SHA-256: `3c808e890effa4e5acb730e8658e8b889eb3b558b7a8c108a11e02c70fbbf40e`.
+Build/source/install and runtime fixtures stayed outside the repository under
+temporary local directories. The initial package helper inspected `outputs/`
+instead of the existing provider's `output/`; correcting that external check
+produced the successful fresh install run. Production code was unchanged by that
+correction. Tests and logs are fixture acceptance, not a supported release matrix.
 
 **Historical:** original Kaggle notebooks/configuration and reported benchmarks
 are preserved unchanged from `aa15fc9`. No historical performance number was
@@ -184,8 +202,8 @@ The image receipt issue affected both correctness and result provenance and was
 treated as blocking until fixed. Review verdict for release remains **CONCERNS**:
 physical resource declarations cannot fence other programs/workspaces, and private
 state/snapshots have no new encryption/retention policy. These are explicit V1
-limits, not claims of isolation or real-worker certification. Local milestone
-acceptance is contingent on the final test/install checks below.
+limits, not claims of isolation or real-worker certification. The bounded local
+milestone passed the final test/install checks above and now stops for review.
 
 ## Remaining boundary and next acceptance
 
