@@ -1,3 +1,5 @@
+> **Historical document ? notice added 2026-10-02.** Its original body is preserved. Completion, safety and performance statements below are prior reports, not current acceptance evidence. Read the [V2 research index](README.md) and [current source audit](CURRENT_ARCHITECTURE_AUDIT.md) before implementation. V2 remains awaiting explicit user review and approval.
+
 # Knowledgebase: Architectural Decision Records (ADRs)
 
 **Project:** Standalone Kaggle x Qwen Coding Harness  
