@@ -27,7 +27,7 @@ this driver is accepted as the Stage 3 foundation.
 
 Observed starting integration gaps: the CLI owned conversation state and constructed
 providers/tools directly. Skill `allowed_tools` was parsed but unenforced; the
-registry/prompt builder also refer to missing skill-manager methods. These are
+registry/prompt builder also referred to missing skill-manager methods. These were
 Stage 3 repair targets now corrected in the production boundary.
 
 The optional OpenHands adapter remains an isolated historical experiment. It

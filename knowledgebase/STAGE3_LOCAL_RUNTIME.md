@@ -176,7 +176,7 @@ workflow/delegation/cron implementation hidden inside the skill manager.
   blocked tokenizer metadata connection); **28 passed in 146.575 seconds** with
   zero external connection attempts. Their optional fixture environment and
   rejection evidence are preserved; these are not production SDK adoption tests.
-- Earlier scanner: 138 repository files checked, zero configured secret patterns.
+- Final scanner: 139 repository files checked, zero configured secret patterns.
   `git diff --check` passed. Scanner success is not a complete DLP/release proof.
 - Actual CLI fixture: approved write + real Python verification command; second
   process `/resume` issued no new model request and left action receipts unchanged.
@@ -211,6 +211,12 @@ The cumulative change from preserved Stage 2 checkpoint `e869f1f` is exactly
 28 files. The existing unit tests, `kaggle/`, historical SDK fixtures and
 `harness/experiments/` are unchanged in this phase. Existing automatic checkpoint
 history is preserved; no reset, squash or main-branch modification is needed.
+
+Final scope verification matched all 28 intended paths and confirmed unchanged
+prior unit-test files, notebooks and SDK experiments. `git diff --check` passed.
+Local and remote `main` remained `1300566dca62a0f804487e7101767e688e551184`.
+The final commits and push target only `v2/safety-and-agentdriver-spike`; no merge,
+PR, deployment or remote GPU session is part of this handoff.
 
 | Group | Included paths |
 | --- | --- |
