@@ -273,7 +273,7 @@ class ToolRegistry:
             if set(arguments) - set(properties):
                 raise ValueError("Unknown tool argument")
             if any(k not in arguments for k in tool.parameters.get("required", [])):
-                raise ValueError("Missing required argument")
+                raise ValueError("missing required argument")
             types = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
             for name, value in arguments.items():
                 expected = types.get(properties[name].get("type"))

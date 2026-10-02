@@ -33,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+spike = ["openhands-sdk==1.50.1; python_version >= '3.12'"]
 dev = [
     "pytest>=7.0.0",
 ]
