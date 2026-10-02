@@ -1,9 +1,4 @@
 """CLI presentation adapter. Conversation, providers and effects belong to the core."""
-from urllib.parse import urlsplit
-
-from harness.security import scrubber
-
-
 class CoreClient:
     def __init__(self, core):
         self._core = core
@@ -62,13 +57,13 @@ class CoreClient:
         return self._rendered(lambda: self._core.resume(session_id, approval_resolver=callbacks.get("on_approval_request")), callbacks)
 
     def list_sessions(self):
-        return self._core.sessions.list_sessions()
+        return self._core.list_sessions()
 
     def new_session(self):
-        self._core.current_session_id = None
+        self._core.new_session()
 
     def actions(self):
-        return self._core.store.all("SELECT id,task_id,name,state,target,pre_hash,post_hash FROM actions ORDER BY rowid DESC LIMIT 30")
+        return self._core.list_actions()
 
     def reconcile(self, action_id, outcome, expected_hash, resolver):
         return self._core.tool_broker.reconcile(action_id, outcome, expected_hash, resolver)
@@ -94,15 +89,7 @@ class CoreClient:
 
     @server_url.setter
     def server_url(self, value):
-        parsed = urlsplit(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-            raise ValueError("Image endpoint must be HTTP(S) without embedded credentials")
-        if self._core.inference.allocation()["state"] != "idle":
-            raise ValueError("Resolve the active/uncertain allocation before changing the image endpoint")
-        if not self._core.image_provider:
-            raise ValueError("Image provider is not configured in this core composition")
-        scrubber.register_secret(value)
-        self._core.image_provider.server_url = value.rstrip("/")
+        self._core.set_image_endpoint(value)
 
     def generate_image(self, prompt):
         return self._core.generate_image(prompt)

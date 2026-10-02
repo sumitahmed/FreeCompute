@@ -164,7 +164,7 @@ def run_interactive_repl(
             continue
         if cmd == "/actions":
             for action in orchestrator.actions():
-                print(f"{action['id']}  {action['name']}  {action['state']}  target={action['target']}  pre={action['pre_hash']}  post={action['post_hash']}")
+                print(f"{action['id']}  {action['name']}  {action['state']}  target={action['target']}  current={action['current_hash']}  pre={action['pre_hash']}  post={action['post_hash']}")
             continue
         if cmd == "/cancel":
             orchestrator.cancel()

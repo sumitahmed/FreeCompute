@@ -1,6 +1,7 @@
 """The one-process local runtime. Clients submit commands and render its events."""
 import json
 import threading
+from urllib.parse import urlsplit
 
 from harness.core.client import CancellationToken
 from harness.core.context import budget_context
@@ -356,6 +357,36 @@ class CoreService:
 
     def cancel(self):
         self.cancellation_token.cancel()
+
+    def list_sessions(self):
+        return self.sessions.list_sessions()
+
+    def new_session(self):
+        self.current_session_id = None
+
+    def list_actions(self):
+        from harness.storage.undo import file_hash
+        from harness.tools.sandbox import validate_workspace_path
+        rows = self.store.all("SELECT id,task_id,name,state,target,pre_hash,post_hash FROM actions ORDER BY rowid DESC LIMIT 30")
+        for row in rows:
+            row["current_hash"] = None
+            if row["target"]:
+                try:
+                    row["current_hash"] = file_hash(validate_workspace_path(row["target"], str(self.store.workspace), True))
+                except Exception as exc:
+                    row["file_check_error"] = scrubber.scrub(exc)
+        return scrubber.structured(rows)
+
+    def set_image_endpoint(self, value):
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Image endpoint must be HTTP(S) without embedded credentials")
+        if self._run_lock.locked() or self.inference.allocation()["state"] != "idle":
+            raise ValueError("Resolve the active/uncertain allocation before changing the image endpoint")
+        if not self.image_provider:
+            raise ValueError("Image provider is not configured in this core composition")
+        scrubber.register_secret(value)
+        self.image_provider.server_url = value.rstrip("/")
 
     def get_health(self):
         health = self.inference.engine.get_health()
