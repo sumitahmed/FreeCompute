@@ -1,8 +1,10 @@
 # OpenHands SDK compatibility spike
 
-2026-10-02. Branch `v2/safety-and-agentdriver-spike`. **Decision: NEEDS MORE EVIDENCE.** Do not adopt OpenHands as the production AgentDriver yet. Keep the existing orchestrator and the small FreeCompute-owned proposal/broker interfaces. Stop for user review; Cline/Pi were not evaluated in this phase.
+2026-10-02. Branch `v2/safety-and-agentdriver-spike`. **Current decision: REJECT OpenHands 1.50.1 as the general V2 foundation under the required boundaries.** The original Stage 1 characterization below concluded NEEDS MORE EVIDENCE and is preserved as historical evidence. The newly authorized durable experiment is recorded in [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); no production SDK integration or alternative foundation was started.
 
 ## Exact experiment
+
+**Historical:** the setup, matrix and original conclusion below, until the Authorized follow-up evidence section, describe the first 15 characterization tests. They do not describe the later broker/restart/native-child experiment.
 
 - Package: `openhands-sdk==1.50.1`, current PyPI release checked on the experiment date; requires Python >=3.12. Production FreeCompute still declares Python >=3.10.
 - Release tag: [`v1.50.1`](https://github.com/OpenHands/software-agent-sdk/tree/v1.50.1), commit `1e1390acc8788346ba4804c34323284009bf3f5e`. The experiment installed the PyPI wheel, not moving GitHub main. Installed `llm.py` and `local_conversation.py` were byte-compared (normalized line endings) to this release commit and matched.
@@ -60,3 +62,17 @@ python tests/security_scan.py
 ## Next review decision
 
 Review Stage 1 source/notebook changes and this matrix. If further OpenHands work is authorized, the next bounded test should be an approved broker tool-result round trip plus process restart using a FreeCompute-owned store, with enforced profile routing and pre-SDK sanitization for all normal/retry/condenser/child/stream/error paths. Run native one-slot delegation only after those ownership boundaries are demonstrated. Do not begin Stage 3 or evaluate another SDK without that review.
+
+## Authorized follow-up evidence — 2026-10-02
+
+**Tested:** actual public ToolExecutor observations now carry FreeCompute registry results and the SDK continues. Seven tool cases are covered. Normal/sync/async calls, retries and real condensation summaries route through the core broker with request/actor/task/profile/purpose/parent/timing records. A frozen wrapped profile rejects mutation; Responses API is explicitly unsupported and fails closed.
+
+**Tested:** four real process crashes now recover without duplicate successful effects; pending/approved actions require fresh approval, interrupted execution is quarantined, completed results return without execution. The first restart attempt exposed a stale SDK active HEAD; a public projection reconciliation repaired the single linear fixture. This is not general branch or child recovery.
+
+**Tested limitation:** public `switch_llm` to an ordinary SDK LLM sends a request without a core broker record. Provisioned wrapped profiles route correctly, but SDK-wide enforcement does not exist. A restricted facade must forbid plain profiles; a controlled URL alone is insufficient.
+
+**Tested limitation:** native Delegate can use an explicitly registered child factory with a distinct core actor, read-only tool grant and wrapped inference; one slot completes without deadlock. However its child constructor drops the deny-capability workspace and core FileStore. Native child result size is unbounded, and its interrupt method does not propagate core cancellation automatically. Explicit shared core cancellation works but remote acknowledgement stays unknown.
+
+**Tested limitation:** a raw registered fixture credential passed through the native Delegate task entry is logged and added to its own event store before brokered inference sanitizes it. The restricted adapter's input/output/tool/exception/fragment/display/persistence paths pass their scrubbing tests. This does not establish universal SDK redaction. Pre-sanitizing the native task would address that one sink; it does not restore the lost workspace/store boundary.
+
+**Decision:** reject this pinned release as the general foundation within this experiment's scope. A deliberately restricted single-agent adapter works; the full required envelope has failed native-child authority/state and universal routing gates. No claim is made that every future SDK integration necessarily requires a deep fork. See the decision document for exact limits, verification and the next bounded candidate.

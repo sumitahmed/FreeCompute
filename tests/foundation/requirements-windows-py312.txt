@@ -1,0 +1,7 @@
+# Minimal imports for the native Delegate probe; deliberately excludes browser
+# and terminal runtime activation. Not a complete openhands-tools installation.
+-r ../spike/requirements-windows-py312.lock.txt
+binaryornot==0.6.0
+func-timeout==4.3.5
+libtmux==0.62.0
+# Install openhands-tools==1.50.1 separately with --no-deps, as README explains.

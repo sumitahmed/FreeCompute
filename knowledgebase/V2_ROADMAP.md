@@ -5,7 +5,7 @@ Proposed, 2026-10-02. **The user subsequently authorized Stage 1 safety repairs 
 ## Recorded progress ? 2026-10-02
 
 - Stage 1: focused repairs implemented on `v2/safety-and-agentdriver-spike`; [evidence and release concerns](STAGE1_SAFETY_BASELINE.md). Expanded unit suite: 81 passed. Canonical supervisor and two embedded text notebook cells were repaired and compared locally; no notebook executed.
-- Stage 2: pinned `openhands-sdk==1.50.1` with disposable fake inference; 15 characterization tests passed. [Matrix and decision](OPENHANDS_COMPATIBILITY_SPIKE.md): **NEEDS MORE EVIDENCE**. Native delegation, universal routing/redaction and full restart/tool-result ownership are not proven.
+- Stage 2: the initial 15-test characterization was preserved and checkpointed. The subsequently authorized core broker/SQLite/public SDK experiment completed actual tool round trips, four process-crash/restart cases and native child/cancellation probes. Final suites: 94 unit + 15 original SDK + 28 foundation tests passed. [Foundation decision](FOUNDATION_DECISION.md): **REJECT OpenHands 1.50.1 as the general foundation**; native child authority/store propagation and universal routing fail. Restricted adapter results are explicitly separated from adoption gates.
 - Stages 3 onward: not started. Stop for user review; no automatic Cline/Pi evaluation.
 
 ## Sequence and evidence gates
@@ -58,7 +58,7 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 
 ## Decisions requiring user input
 
-1. **Foundation:** review the completed bounded spike and decide whether to authorize the remaining authority/recovery tests. No SDK is adopted; alternative SDK evaluation requires a new decision.
+1. **Foundation:** review the completed durable experiment and rejection evidence. Recommended next bounded stage: qualify the narrow custom FreeCompute proposal driver against the same broker/recovery contracts before Stage 3. No alternative is implemented; further implementation requires user review.
 2. **First-release scope:** coding/text first with image adapter after the local authority baseline, or image jobs included earlier. Video stays later.
 3. **Execution mode:** approved trusted-host commands versus required isolated container/WSL execution; Windows release scope and supported OS matrix.
 4. **Workers/privacy:** first supported local/private server profiles; acceptable remote data disclosure and transport; notebook modes require current provider-policy confirmation.
@@ -66,4 +66,4 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 6. **Autonomy:** which schedules may have standing grants, with what paths/actions/network/budgets/expiry? Default headless tasks cannot auto-approve.
 7. **Client:** local browser dashboard first versus desktop or editor priority after API stabilization.
 
-Recommendation: review the implemented safety repairs and the NEEDS MORE EVIDENCE SDK result before authorizing further work. The current phase stops here; the full V2 migration remains unstarted.
+Recommendation: review the preserved safety baseline and the completed foundation decision before authorizing the narrow custom-driver qualification. Stage 3 remains unstarted; the experimental SQLite store is not an adopted production runtime. No scheduler, worker registry, GUI, daemon or cloud session was built.
