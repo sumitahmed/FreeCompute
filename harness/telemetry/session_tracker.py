@@ -27,6 +27,7 @@ class SessionTracker:
         self.last_container_uptime_seconds: Optional[float] = None
         self.last_sync_timestamp: Optional[float] = None
         self.is_connected = False
+        self.session_age_source = "unknown"
 
     def mark_connected(self):
         """Record the start of active local harness connection."""
@@ -42,7 +43,8 @@ class SessionTracker:
         """Ingest remote health payload from Kaggle supervisor."""
         self.mark_connected()
         self.last_sync_timestamp = time.time()
-        container_uptime = health_data.get("containerUptimeSeconds")
+        self.session_age_source = health_data.get("sessionAgeSource", "legacy_unverified")
+        container_uptime = health_data.get("sessionAgeSeconds", health_data.get("containerUptimeSeconds"))
         if container_uptime is not None:
             self.last_container_uptime_seconds = float(container_uptime)
 
@@ -87,6 +89,9 @@ class SessionTracker:
         container_age = self.estimated_container_uptime_seconds
         return {
             "is_connected": self.is_connected,
+            "is_estimate": True,
+            "session_age_source": self.session_age_source,
+            "session_limit_source": "configured 12h assumption; not a platform deadline",
             "connected_uptime_seconds": round(self.connected_uptime_seconds, 1),
             "connected_uptime_formatted": format_duration(self.connected_uptime_seconds),
             "container_uptime_seconds": round(container_age, 1) if container_age is not None else None,

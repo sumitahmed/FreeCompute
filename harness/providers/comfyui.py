@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from harness.core.models import GpuTelemetry, Message, RemoteHealth, StreamChunk
 from harness.providers.base import BaseProvider, Capability
+from harness.security import scrubber
+from harness.tools.sandbox import validate_workspace_path
 
 
 class ComfyUIProvider(BaseProvider):
@@ -22,10 +24,12 @@ class ComfyUIProvider(BaseProvider):
     Supported capabilities: IMAGE_GEN.
     """
 
-    def __init__(self, server_url: str = "", output_dir: str = "output"):
+    def __init__(self, server_url: str = "", output_dir: str = "output", workspace_root: str = "."):
         super().__init__(name="ComfyUI (Qwen-Image-2.1)")
         self.server_url = server_url.rstrip("/")
-        self.output_dir = Path(output_dir).resolve()
+        scrubber.register_secret(self.server_url)
+        self.workspace_root = workspace_root
+        self.output_dir = validate_workspace_path(output_dir, workspace_root, True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def get_capabilities(self) -> Set[Capability]:
@@ -36,10 +40,10 @@ class ComfyUIProvider(BaseProvider):
         if not self.server_url:
             return RemoteHealth(
                 status="unconfigured",
-                supervisor_uptime_seconds=0.0,
-                container_uptime_seconds=0.0,
-                max_session_seconds=0.0,
-                seconds_remaining_in_12h_session=0.0,
+                supervisor_uptime_s=0.0,
+                container_uptime_s=0.0,
+                max_session_s=0.0,
+                seconds_remaining_12h=0.0,
                 gpus=[],
                 raw={},
             )
@@ -65,22 +69,22 @@ class ComfyUIProvider(BaseProvider):
                     ))
                 return RemoteHealth(
                     status="healthy",
-                    supervisor_uptime_seconds=0.0,
-                    container_uptime_seconds=0.0,
-                    max_session_seconds=43200.0,
-                    seconds_remaining_in_12h_session=43200.0,
+                    supervisor_uptime_s=0.0,
+                    container_uptime_s=0.0,
+                    max_session_s=0.0,
+                    seconds_remaining_12h=0.0,
                     gpus=gpus,
-                    raw=data,
+                    raw=scrubber.structured(data),
                 )
         except Exception as exc:
             return RemoteHealth(
                 status="unreachable",
-                supervisor_uptime_seconds=0.0,
-                container_uptime_seconds=0.0,
-                max_session_seconds=0.0,
-                seconds_remaining_in_12h_session=0.0,
+                supervisor_uptime_s=0.0,
+                container_uptime_s=0.0,
+                max_session_s=0.0,
+                seconds_remaining_12h=0.0,
                 gpus=[],
-                raw={"error": str(exc)},
+                raw={"error": scrubber.scrub(exc)},
             )
 
     def stream_chat(
@@ -198,7 +202,7 @@ class ComfyUIProvider(BaseProvider):
 
         client_id = str(uuid.uuid4())
         workflow = self.build_qwen_image_workflow(
-            prompt=prompt,
+            prompt=scrubber.scrub(prompt),
             width=width,
             height=height,
             steps=steps,
@@ -254,7 +258,9 @@ class ComfyUIProvider(BaseProvider):
 
         # 3. Download generated image to local output directory
         view_url = f"{self.server_url}/view?filename={urllib.parse.quote(saved_filename)}&type=output"
-        local_dest = self.output_dir / saved_filename
+        if Path(saved_filename).name != saved_filename or "/" in saved_filename or "\\" in saved_filename:
+            raise ValueError("Invalid remote output filename")
+        local_dest = validate_workspace_path(str(self.output_dir / saved_filename), self.workspace_root, True)
         urllib.request.urlretrieve(view_url, local_dest)
 
         return {
