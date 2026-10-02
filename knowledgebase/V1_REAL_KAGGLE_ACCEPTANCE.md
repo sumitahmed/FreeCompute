@@ -4,6 +4,15 @@
 checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. **No GPU session, tunnel,
 remote health request or real inference has been started in this preparation.**
 
+**Current preparation block:** the user's executable cell 4 reported Kaggle
+glibc **2.35**, while the official `b11206` CUDA archive requires **2.38**.
+That archive is incompatible with the observed runtime. Do not continue the
+old download procedure or allocate GPU time while preparing its replacement.
+A CPU-only Ubuntu 22.04 / CUDA 12.4 / SM75 build of the same pinned commit with
+`GGML_CUDA_NO_VMM=ON` is running in
+[GitHub Actions](https://github.com/sumitahmed/FreeCompute/actions/runs/37049526251).
+Its artifact has not yet been verified or integrated into cell 4.
+
 ## Observed repository and historical profile
 
 Use `kaggle/freecompute_dual_gpu_server.ipynb` from this feature branch after the
