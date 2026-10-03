@@ -13,12 +13,16 @@ FOR V1**. The prior GUI experiment remains on its separate branch.
 | --- | --- |
 | Accepted backend before modifications | 210 unit tests passed in 82.084s |
 | Focused existing CLI integration | 15 tests passed |
-| Final full unit suite | **229 passed in 47.821s**; original 210 unchanged, 19 new production regressions |
+| Final full unit suite | **240 passed in 91.930s**; original 210 unchanged, 30 production regressions (11 for dynamic URL/reconnect) |
 | Installed editable CLI, fresh temporary venv | Help/launch executed outside repo; baseline wrong-model banner, false ONLINE status and ignored coding `--prompt` reproduced before fixes |
 | Clean wheel/source snapshot | `freecompute-0.1.0-py3-none-any.whl` built outside the repo |
 | Wheel inventory | **46** production Python files byte-matched to snapshot; YAML sample present; no experiments, GUI/API/tests or private `.env` |
 | Fresh venv wheel installation | Entrypoint/help/version/Core imports executed outside repo; OpenHands absent; metadata/import version `0.1.0` consistent |
-| End-to-end wheel acceptance | **16 passed**, using installed `freecompute.exe`, isolated state and disposable paths with spaces/Unicode |
+| Reinstalled manual command | Verified wheel reinstalled into the existing Python installation without changing dependencies; bare `freecompute --help`/`--version` executed outside repo and imported installed site-packages |
+| End-to-end wheel acceptance | **20 passed**, using installed `freecompute.exe`, isolated state and disposable paths with spaces/Unicode |
+| Dynamic Kaggle URL | Fresh `--remote-url` overrode an expired HTTP 530 registry URL using the dotenv key; flag-selected compatible worker also checked |
+| Runtime reconnect | Installed `/connect` refreshed authenticated health/models; bad URLs/wrong keys stayed nonfatal, keys stayed redacted, saved config unchanged |
+| Reconnect recovery | Completed receipts/actions/tests were not replayed; queued tasks stayed queued until explicit dispatch; unknown leases retained their fence |
 | Real local coding effects | 4 model/tool turns: read calculator → proposed `//` to `/` edit → approved real unittest command → actual result → one final response; 2 real tests passed |
 | Restart/resume | Completed inference/actions/command receipts unchanged; HTTP request count and real test counter unchanged |
 | Diff/undo | Real diff, undo preview/deny with unchanged file, later approved sealed restore without inference/test replay |
@@ -31,7 +35,7 @@ FOR V1**. The prior GUI experiment remains on its separate branch.
 | Final releasable-source scan | **155 files, zero findings**; ignored private config/key files excluded; matched secret text is never reprinted |
 
 Wheel SHA256 observed in this run:
-`ce3ef182736bfdf2fa864348d7f432b601334de0831822564c0e52ec5acfeade`.
+`62d1a2787cf80669039eea6cfe89e47959a03c871d6c90a78adca537a70dc091`.
 Acceptance script prints its temporary evidence directory, containing
 `acceptance.json` and `transcripts.json`; no private key is logged. The source
 secret scanner reports locations/rules without reprinting a matched secret and
@@ -56,6 +60,8 @@ their historical evidence is retained separately.
   current measurements. Other Python versions/OSes/models were not executed.
 - Remote acknowledgement is unavailable for these adapters. Unknown outcomes
   hold capacity; operator reconciliation requires independent idle evidence.
+  `/connect` cannot change a worker's endpoint while it holds active/uncertain
+  leases; it never clears that hold or resubmits a task automatically.
 - Quick Tunnel SSE is not universally supported. One earlier live session
   streamed successfully; the actual new endpoint must be tested.
 - The downloadable Kaggle engine artifact expires on 2026-10-10; after expiry
@@ -77,6 +83,15 @@ blocked on the user's manual decision, not on green tests alone.
 
 From the repository on `v1/cli-release`, with the existing private key preserved:
 
+After installation, the normal Kaggle launch is simply:
+
+```powershell
+freecompute --remote-url "https://YOUR-KAGGLE-URL"
+```
+
+If the tunnel changes during the session, use `/connect https://YOUR-NEW-KAGGLE-URL`.
+No key argument or saved tunnel edit is required. Fresh checkout installation:
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
@@ -85,8 +100,13 @@ python -m venv .venv
 
 Keep `FREECOMPUTE_API_KEY` in the existing private `.env`, matching the notebook
 secret. For the explicit registry flow, copy `harness/config.sample.yaml` to
-`config.yaml` only if that private file is missing; update `workers[].url` to the
-**current** Kaggle URL and `model_profiles[].model` to its exact advertised alias.
+`config.yaml` only if that private file is missing; configure
+`model_profiles[].model` to its exact advertised alias. Supply the fresh tunnel
+URL at launch with `freecompute --remote-url "https://YOUR-KAGGLE-URL"`.
+The CLI flag overrides the saved worker URL for that run; it does not write the
+ephemeral URL to YAML or dotenv. When already running, use
+`/connect https://YOUR-NEW-KAGGLE-URL`; this reuses the key and refreshes
+authenticated health/models without submitting or replaying tasks.
 `FREECOMPUTE_REMOTE_URL` controls only the legacy single-worker route, not an
 explicit registry. The key is not a GUI/API token. Do not Run All or restart the
 running Kaggle model. Make a new disposable local workspace:
@@ -108,7 +128,7 @@ class CalculatorTests(unittest.TestCase):
         self.assertEqual(divide(8, 2), 4)
 '@ | Set-Content -Encoding UTF8 (Join-Path $taskProject 'test_calculator.py')
 $env:FREECOMPUTE_JOURNAL_DIR = Join-Path $env:TEMP ('FreeCompute manual ledger ' + [guid]::NewGuid().ToString('N'))
-.\.venv\Scripts\freecompute.exe --config config.yaml --workspace $taskProject
+.\.venv\Scripts\freecompute.exe --config config.yaml --workspace $taskProject --remote-url "https://YOUR-KAGGLE-URL"
 ```
 
 At `freecompute>` run `/status`, `/model`, `/workers`, `/models`, `/help`.
@@ -148,6 +168,7 @@ the application.
 ## Files changed in the final pass
 
 - CLI: `harness/cli/main.py`, `formatter.py`, `core_client.py`.
+- Core reconnect/discovery: `harness/core/client.py`, `engines.py`, `service.py`.
 - Configuration/package: `harness/config.py`, `harness/core/engine_config.py`,
   `harness/config.sample.yaml`, `harness/__init__.py`, `pyproject.toml`, `.env.example`.
 - Acceptance/regressions: `tests/unit/test_cli_product.py`,

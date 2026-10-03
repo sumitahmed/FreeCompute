@@ -302,6 +302,22 @@ class CliProductTests(unittest.TestCase):
         with contextlib.closing(self.db()) as db:
             self.assertEqual(db.execute("SELECT state FROM inference_leases").fetchone()[0], "quarantined")
 
+    def test_connect_preserves_queued_task_without_automatic_dispatch(self):
+        self.server.health_http_status = 530
+        self.cli("queued request\n/exit\n")
+        with contextlib.closing(self.db()) as db:
+            tasks = db.execute("SELECT id,session_id,profile_id,state FROM tasks").fetchall()
+        fresh, url = self.fresh_worker()
+        self.cli("/connect " + url + "\n/queue\n/exit\n")
+        self.assertEqual(fresh.requests, [])
+        self.assertEqual(self.server.requests, [])
+        with contextlib.closing(self.db()) as db:
+            self.assertEqual(db.execute("SELECT id,session_id,profile_id,state FROM tasks").fetchall(), tasks)
+        self.cli("/run-next\n/exit\n", args=("--remote-url", url))
+        self.assertEqual(len(fresh.requests), 1)
+        with contextlib.closing(self.db()) as db:
+            self.assertEqual(db.execute("SELECT id,state FROM tasks").fetchall(), [(tasks[0][0], "completed")])
+
     def test_connect_legacy_route_reuses_freecompute_key_without_registry(self):
         fresh, url = self.fresh_worker()
         self.environment.update(FREECOMPUTE_API_KEY=fixture.TOKEN, FREECOMPUTE_MODEL_ALIAS="fixture-code")

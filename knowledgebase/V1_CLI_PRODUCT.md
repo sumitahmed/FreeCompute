@@ -48,7 +48,7 @@ are imported from the separate GUI experiment.
 
 The single-worker flow uses private `.env` entries `FREECOMPUTE_REMOTE_URL`,
 `FREECOMPUTE_API_KEY`, `FREECOMPUTE_MODEL_ALIAS` and optional protocol/transport
-settings. `--remote-url` remains supported there. Explicit registries use
+settings. Explicit registries use
 `model_profiles`, `workers`, `selected_profile` and `selected_worker` from YAML;
 the packaged `harness/config.sample.yaml` declares one dual-T4 profile/worker.
 
@@ -60,8 +60,18 @@ Programmatically constructed `HarnessConfig` objects still resolve references
 from current process environment. The old process-only behavior in the live
 acceptance ledger is historical.
 
-Registry mode rejects single-worker `--remote-url`/`--api-key`/`--engine` flags
-instead of silently ignoring them. Non-loopback text endpoints require a bearer
+CLI `--remote-url` overrides the selected registry worker's saved URL for this
+run, after `--profile`/`--worker` selection. Without a selected worker, it chooses
+and selects the first eligible text worker. Other workers and saved files remain
+unchanged. Without a registry it overrides the legacy URL. Runtime
+`/connect <URL>` changes the selected text adapter using its existing credentials,
+probes authenticated health/model discovery and refreshes observed worker/model
+status. It does not submit, resume or retry tasks; completed receipts remain
+intact. Invalid URLs and authentication failures are concise errors. Expired
+endpoints at startup leave the REPL usable with reconnect guidance.
+
+Registry mode still rejects single-worker `--api-key`/`--engine` flags.
+Non-loopback text endpoints require a bearer
 key. Local loopback engines may explicitly run without auth; the public Kaggle
 supervisor's mandatory authentication remains unchanged. ComfyUI keeps its
 existing protected-endpoint requirement and lacks a bearer transport contract.
@@ -75,7 +85,7 @@ restart defaults come from configuration. Existing queued tasks do not rebind.
 
 ## Commands
 
-`/help`, `/status`, `/model [profile] [worker]`, `/models`, `/workers`, `/queue`,
+`/help`, `/status`, `/connect <URL>`, `/model [profile] [worker]`, `/models`, `/workers`, `/queue`,
 `/sessions`, `/resume <id>`, `/new`, `/skills`, `/diff`, `/undo`,
 `/cancel [task-id]`, `/clear`, `/image <prompt>`, `/exit`.
 
@@ -98,15 +108,22 @@ lease across restart, and their capacity is displayed as held.
 Explicit idle reconciliation requires independent engine-idle evidence and
 approval. Healthy status or low GPU utilization is insufficient. Uncertain local
 effects require action inspection and explicit reconciliation, not blind retry.
+Reconnect cannot change a worker's endpoint while it holds active/quarantined
+leases. It neither clears that fence nor converts a new health response into
+proof that an earlier inference completed.
 
 ## Tested and unverified
 
-The full **229-test** suite preserved all original **210** tests. The installed
-wheel passed **16** explicit loopback acceptance checks with real local file/test
+The full **240-test** suite preserved all original **210** tests. The installed
+wheel passed **20** explicit loopback acceptance checks with real local file/test
 effects, including a 4-turn coding flow, restart/no replay, queue recovery, undo,
 cross-chunk redaction and native Windows Ctrl+Break. This is deterministic model
 fixture evidence, not a new GPU test. The wheel contains **46** production Python
 files and the YAML sample, excluding SDK experiments and all GUI/API/test code.
+Dynamic URL tests used a real loopback HTTP 530 stale endpoint and a distinct
+authenticated fresh endpoint. They verified flag precedence, runtime reconnect,
+dotenv credential reuse, invalid URLs, wrong keys, no config persistence,
+completed receipt reuse, queued-task preservation and unknown-lease fencing.
 
 The physical Ctrl+C key in the user's own terminal, visual wrapping/colors across
 terminal hosts and the final real Kaggle CLI flow remain manual checks. Windows

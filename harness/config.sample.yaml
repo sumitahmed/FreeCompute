@@ -1,4 +1,6 @@
-# Copy to ignored config.yaml and edit the existing project/worker endpoint.
+# Copy to ignored config.yaml and configure the project/model once.
+# Pass each session's fresh Kaggle URL with freecompute --remote-url "URL".
+# While running, /connect URL reconnects without saving the temporary URL.
 # Credentials belong in private .env/process environment, not this YAML.
 workspace_root: "."
 # Legacy quota/undo compatibility files only. Authoritative SQLite state is in
@@ -23,7 +25,7 @@ workers:
   - worker_id: kaggle-qwen
     location: kaggle
     engine: llama.cpp
-    # Replace privately with the current Cloudflare/Tailscale/local supervisor URL.
+    # Placeholder fallback; --remote-url overrides it for the current run.
     url: http://127.0.0.1:8081
     api_key_env: FREECOMPUTE_API_KEY
     profiles: [kaggle-qwen-historical-64k]

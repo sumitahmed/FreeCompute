@@ -26,20 +26,39 @@ Node, a browser service or a GUI token.
 Create a private `.env` if it does not exist, or update your existing one:
 
 ```dotenv
-FREECOMPUTE_REMOTE_URL=https://xxxx.trycloudflare.com
 FREECOMPUTE_API_KEY=your-session-api-key-from-kaggle
 FREECOMPUTE_MODEL_ALIAS=qwen3.8-27b-huihui-abliterated-q4
 FREECOMPUTE_TRANSPORT=cloudflare
 ```
 
-Use your actual current worker URL, exact advertised model alias and the same
+Use the exact advertised model alias and the same
 private bearer key enabled in the notebook. `.env` and `config.yaml` are ignored
 by Git. Keep credentials out of command arguments and notebook source.
+Supply the fresh Kaggle tunnel URL on each launch. When the installed CLI is on
+your PATH, the command is simply:
+
+```powershell
+freecompute --remote-url "https://YOUR-KAGGLE-URL"
+```
+
+`--remote-url` overrides the selected text worker's saved URL for this run,
+including a registry in `config.yaml`. The key still comes from the configured
+dotenv/environment mechanism; neither the key nor this temporary URL is saved.
+If the tunnel changes while the CLI is open:
+
+```text
+/connect https://YOUR-NEW-KAGGLE-URL
+```
+
+This uses the existing key, probes authenticated health/model discovery and
+refreshes worker status without submitting a task. Unreachable startup remains
+usable and shows reconnect guidance. Active/uncertain worker leases must be
+resolved before changing their endpoint; reconnect never releases held capacity.
 
 Choose an existing disposable project for the first test:
 
 ```powershell
-.\.venv\Scripts\freecompute.exe --workspace "C:\path\to\disposable-project"
+.\.venv\Scripts\freecompute.exe --remote-url "https://YOUR-KAGGLE-URL" --workspace "C:\path\to\disposable-project"
 ```
 
 Enter a coding request. Read each proposed edit/command and answer `y` only when
@@ -60,8 +79,8 @@ proof notebooks are evidence, not the current authenticated worker.
 3. Run code cells **1–8 individually and in order**. Stop on any error. **Do not
    Run All or Save & Run All**; the last code cell is guarded shutdown.
 4. Cell 4 must verify the downloaded engine and both T4 GPUs, cell 6 the healthy
-   supervisor, and cell 8 `WORKER READY FOR LOCAL ACCEPTANCE`. Copy cell 7's URL
-   into your private local configuration. A notebook ready marker alone does
+   supervisor, and cell 8 `WORKER READY FOR LOCAL ACCEPTANCE`. Pass cell 7's URL
+   to `freecompute --remote-url "URL"` or `/connect URL`. A notebook ready marker alone does
    not prove connectivity or model inference from your computer.
 5. While FreeCompute uses the worker, keep Kaggle running and do not rerun setup,
    model or transport cells. After work ends, use guarded code cell 9 and Kaggle
@@ -76,11 +95,11 @@ Quick Tunnels will stream. See [the deployment and live evidence ledger](knowled
 ## Workers, models and configuration
 
 For a registry with explicit resource identity, copy
-[`harness/config.sample.yaml`](harness/config.sample.yaml), update its worker URL,
+[`harness/config.sample.yaml`](harness/config.sample.yaml), configure its
 model/profile declarations and workspace, then run:
 
 ```powershell
-.\.venv\Scripts\freecompute.exe --config config.yaml
+.\.venv\Scripts\freecompute.exe --config config.yaml --remote-url "https://YOUR-KAGGLE-URL"
 ```
 
 Precedence is defaults → YAML → `.env` beside the YAML → `.env` in the current
@@ -89,9 +108,13 @@ directory → process environment → CLI flags. `FREECOMPUTE_*` names beat lega
 against those dotenv files and the process environment without copying secrets
 into worker declarations or durable state.
 
-`--remote-url`, the legacy `--api-key` flag and `--engine` configure the single
-worker route; they are rejected with an explicit registry to avoid silently
-ignoring them. Edit `workers[].url/engine/api_key_env` for registry routes.
+`--remote-url` overrides the selected worker's `workers[].url`, after applying
+`--profile`/`--worker` selection. With no explicit selection, it targets the
+first eligible text worker and selects that route. Other workers are unchanged.
+Without a registry it overrides the legacy `remote_url`. Optional saved URLs
+remain fallbacks; temporary URL overrides never write YAML or dotenv files.
+The legacy `--api-key` and `--engine` flags remain single-worker flags; registry
+protocol/key references come from `workers[].engine/api_key_env`.
 `/model <profile-id> [worker-id]` changes new-task defaults for the current CLI
 process. Queued tasks retain their submitted profile/worker route. Restart
 defaults come from configuration, while `/resume` uses the task's recorded route.
@@ -108,6 +131,7 @@ Declared context and configured verification labels are not fresh measurements.
 | --- | --- |
 | `/help` | Commands; `/help recovery` shows explicit reconciliation operations |
 | `/status` | Refresh health/GPU observations; label local timer/quota estimates |
+| `/connect <URL>` | Reconnect the selected text worker with its existing key; refresh health/models without saving the URL |
 | `/model [profile] [worker]` | Show/select the route for new tasks |
 | `/models`, `/workers` | Configured profiles and worker observations/held capacity |
 | `/queue` | Durable queued/running/unknown requests |
