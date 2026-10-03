@@ -175,13 +175,16 @@ def _run_task(client, fmt, prompt=None, resume=None, next_task=False, skill=None
                      on_approval_request=lambda n, a: presentation.approval(n, a, resolver))
     # Reasoning events remain in Core; they are never terminal content.
     from harness.cli.live import LiveTelemetry
-    with LiveTelemetry(client, presentation):
-        if resume:
-            result = client.resume(resume, **callbacks)
-        elif next_task:
-            result = client.run_next(**callbacks)
-        else:
-            result = client.run_task(prompt, skill=skill, **callbacks)
+    try:
+        with LiveTelemetry(client, presentation):
+            if resume:
+                result = client.resume(resume, **callbacks)
+            elif next_task:
+                result = client.run_next(**callbacks)
+            else:
+                result = client.run_task(prompt, skill=skill, **callbacks)
+    finally:
+        presentation.boundary()
     presentation.finish(result)
     return result
 

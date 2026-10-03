@@ -13,6 +13,7 @@ class LiveTelemetry:
         self.client, self.presentation, self.interval = client, presentation, interval
         self.stop = threading.Event()
         self.thread = None
+        self.warned = set()
 
     def __enter__(self):
         if sys.stdout.isatty():
@@ -36,8 +37,10 @@ class LiveTelemetry:
                         continue
                     m = t.metrics
                     safe_print(terminal_text("  Live " + worker + " | " + health.status + " | CPU " + value(m['cpu_utilization_pct'], unit='%') + " | session remaining " + value(m['session_remaining_seconds'], duration=True)), file=sys.stderr)
-                    if t.warning():
-                        safe_print("  Session warning: " + t.warning() + " or less (sampled; " + m['session_limit_seconds']['status'] + " limit)", file=sys.stderr)
+                    warning = t.warning()
+                    if warning and (worker, warning) not in self.warned:
+                        self.warned.add((worker, warning))
+                        safe_print("  Session warning: " + warning + " or less (sampled; " + m['session_limit_seconds']['status'] + " limit)", file=sys.stderr)
             except Exception:
                 # Optional telemetry failure never cancels or fails an inference.
                 continue

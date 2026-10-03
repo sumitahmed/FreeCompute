@@ -60,12 +60,12 @@ class CommandRegistry:
         return name
 
     def help_lines(self, recovery=False):
-        group = None
-        for command in self.entries():
-            if (command.group == "Recovery") != recovery:
+        entries = self.entries()
+        for group in ('Workspace', 'Workers', 'Images', 'Skills', 'Recovery'):
+            if (group == 'Recovery') != recovery:
                 continue
-            if command.group != group:
-                group = command.group
-                yield group
-            yield f"  {command.name} {command.arguments}".rstrip()
-            yield "    " + command.description
+            yield group
+            for command in entries:
+                if command.group == group:
+                    yield f"  {command.name} {command.arguments}".rstrip()
+                    yield "    " + command.description
