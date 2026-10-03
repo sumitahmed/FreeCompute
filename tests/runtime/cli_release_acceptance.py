@@ -82,6 +82,8 @@ def main():
     workspace.mkdir()
     workspace_files(workspace)
     server, thread = start_fixture(str(python))
+    fresh_server, fresh_thread = start_fixture(str(python))
+    fresh_url = f"http://127.0.0.1:{fresh_server.server_port}"
     config = root / "config.yaml"
     config.write_text(json.dumps(configuration(workspace, f"http://127.0.0.1:{server.server_port}")), encoding="utf-8")
     (root / ".env").write_text("FC_FIXTURE_KEY=" + TOKEN + "\n", encoding="utf-8")
@@ -118,6 +120,28 @@ def main():
         out = cli("wrong key", use_env=wrong_env)
         assert "Authentication failed" in out and not server.requests
         record("wrong key is actionable; no inference dispatch")
+        saved_config = config.read_bytes()
+        server.health_http_status = 530
+        server.probes.clear()
+        out = cli("fresh URL overrides expired registry endpoint", extra=("--remote-url", fresh_url))
+        assert "healthy (observed at startup)" in out and not server.probes
+        assert {"path": "/health", "authenticated": True} in fresh_server.probes
+        assert config.read_bytes() == saved_config and not fresh_server.requests
+        record("fresh --remote-url beats expired registry URL; dotenv key reused; no URL persistence")
+        out = cli("runtime reconnect", "/connect not-a-url\n/connect " + fresh_url + "\n/status\n/workers\n/models\n/help\n/exit\n")
+        assert "saved tunnel URL may have expired" in out and "Worker endpoint must be HTTP(S)" in out
+        assert "Connected: fixture-code-worker" in out and "Advertised models: fixture-code, fixture-chat" in out
+        assert {"path": "/health", "authenticated": True} in fresh_server.probes
+        assert {"path": "/v1/models", "authenticated": True} in fresh_server.probes
+        assert "/connect <URL>" in out and config.read_bytes() == saved_config
+        assert fresh_url not in str(query("SELECT declaration FROM workers"))
+        assert not fresh_server.requests and not server.requests
+        record("installed /connect refreshes authenticated health/models; invalid URL stays nonfatal")
+        out = cli("reconnect wrong key", "/connect " + fresh_url + "\n/help\n/exit\n", use_env=wrong_env)
+        assert "Authentication failed" in out and "Connected:" not in out
+        assert wrong_env["FC_FIXTURE_KEY"] not in out and not fresh_server.requests
+        record("reconnect wrong key fails cleanly without secret output or task dispatch")
+        server.health_http_status = 200
         out = cli("commands and model selection", "/help\n/help recovery\n/status\n/workers\n/models\n/model chat fixture-chat-worker\n/model code fixture-code-worker\n/skills\n/new\n/sessions\n/run-next\n/cancel\n/image\n/image-server\n/clear\n/typo\n/exit\n")
         assert "Profile   chat" in out and "Profile   code" in out and "Unknown command" in out
         assert "No active task to cancel" in out and not server.requests
@@ -136,6 +160,12 @@ def main():
         sid = query("SELECT id FROM sessions ORDER BY rowid LIMIT 1")[0][0]
         receipts = query("SELECT id,state,result FROM actions ORDER BY rowid")
         count = len(server.requests)
+        out = cli("completed session survives URL change", "/connect " + fresh_url + "\n/resume " + sid[:8] + "\n/queue\n/exit\n")
+        assert "Connected:" in out and "Recorded task outcome: completed" in out
+        assert len(server.requests) == count and not fresh_server.requests
+        assert query("SELECT id,state,result FROM actions ORDER BY rowid") == receipts
+        assert (workspace / "test-run-count.txt").read_text() == "1" and config.read_bytes() == saved_config
+        record("URL reconnect preserves completed session/actions without inference or test replay")
         out = cli("restart resume and deny undo", "/sessions\n/resume " + sid[:8] + "\n/diff\n/undo\nn\n/exit\n")
         assert "Recorded task outcome: completed" in out and "Undo requested" in out and "Action REJECTED" in out
         assert len(server.requests) == count and (workspace / "test-run-count.txt").read_text() == "1"
@@ -238,6 +268,7 @@ def main():
         print(f"PASS {len(results)} package acceptance checks. Evidence: {root / 'acceptance.json'}", flush=True)
     finally:
         server.release.set(); server.shutdown(); server.server_close(); thread.join(3)
+        fresh_server.release.set(); fresh_server.shutdown(); fresh_server.server_close(); fresh_thread.join(3)
 
 
 if __name__ == "__main__":

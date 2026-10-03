@@ -265,6 +265,15 @@ class CliProductTests(unittest.TestCase):
         self.assertIn({"path": "/health", "authenticated": False}, fresh.probes)
         self.assertEqual(fresh.requests, [])
 
+    def test_connect_valid_but_expired_url_is_nonfatal_without_dispatch(self):
+        self.server.health_http_status = 530
+        url = f"http://127.0.0.1:{self.server.server_port}"
+        out = self.cli("/connect " + url + "\n/help\n/sessions\n/exit\n")
+        self.assertIn("unreachable", out.stdout)
+        self.assertIn("saved tunnel URL may have expired", out.stdout)
+        self.assertNotIn("Connected:", out.stdout)
+        self.assertEqual(self.server.requests, [])
+
     def test_connect_and_resume_preserve_completed_receipts_without_replay(self):
         self.cli("fix calculator\ny\ny\n/exit\n")
         with contextlib.closing(self.db()) as db:
