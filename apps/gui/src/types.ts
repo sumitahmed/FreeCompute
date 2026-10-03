@@ -36,6 +36,6 @@ export interface Queue { jobs: QueueJob[]; leases: Lease[]; active_task_id: stri
 export interface Action { id: string; task_id: string; name: string; state: string; revision: number; target: string | null; pre_hash: string | null; post_hash: string | null; arguments: Payload; result: Payload | null }
 export interface Status {
   api_version: number; simulated: boolean; workspace: string; default_profile: string; default_worker: string | null;
-  active_task_id: string | null; runtime_error: string | null
+  active_task_id: string | null; runtime_error: string | null; demo_connected: boolean | null
 }
 export interface EventPage { events: CoreEvent[]; cursor: number; has_more: boolean }

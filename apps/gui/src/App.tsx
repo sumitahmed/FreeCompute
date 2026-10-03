@@ -68,11 +68,15 @@ function Workspace({ client, onUnauthorized, onDisconnect }: { client: APIClient
   const input = useRef<HTMLTextAreaElement>(null)
   const submission = useRef<{ signature: string; body: Record<string, Json> } | null>(null)
   const profile = core.profiles.find(p => p.profile_id === profileId)
-  const worker = core.workers.find(w => w.worker_id === workerId)
   const task = core.snapshot?.tasks.at(-1)
+  const taskJob = core.queue.jobs.find(job => job.task_id === task?.id)
+  const emittedWorker = [...core.events].reverse().find(event => event.task_id === task?.id && event.kind === 'model.requested')?.payload.worker_id
+  const detailWorkerId = task ? taskJob?.assigned_worker || text(emittedWorker) || taskJob?.requested_worker : workerId
+  const worker = core.workers.find(w => w.worker_id === detailWorkerId)
+  const detailProfile = core.profiles.find(p => p.profile_id === task?.profile_id) || profile
   const unfinished = !!task && !terminal.has(task.state)
-  const budget = [...core.events].reverse().find(e => e.kind === 'context.budget')?.payload
-  const receipt = [...core.events].reverse().find(e => e.kind === 'model.received')?.payload
+  const budget = [...core.events].reverse().find(e => e.task_id === task?.id && e.kind === 'context.budget')?.payload
+  const receipt = [...core.events].reverse().find(e => e.task_id === task?.id && e.kind === 'model.received')?.payload
   useEffect(() => { if (core.status && !profileId) { setProfileId(core.status.default_profile); setWorkerId(core.status.default_worker || '') } }, [core.status, profileId])
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('fc.theme', theme) }, [theme])
 
@@ -147,11 +151,11 @@ function Workspace({ client, onUnauthorized, onDisconnect }: { client: APIClient
             </form></div>
         </>}
       </main>
-      <aside className="details-pane" aria-label="Task details"><section><h2>Worker</h2><WorkerInfo worker={worker} />{core.status?.simulated && <div className="demo-connection"><button disabled={busy} onClick={() => void command(async () => { await client.request('demo/worker', { connected: !core.workers.some(w => w.health === 'healthy') }) })}>{core.workers.some(w => w.health === 'healthy') ? 'Simulate worker disconnect' : 'Reconnect simulated worker'}</button></div>}</section>
-        <section><h2>Model &amp; context</h2><strong>{profile?.model || 'No profile selected'}</strong><p className="muted small">{profile?.verification} · {profile?.capabilities.join(', ')}</p><dl><dt>Declared capacity</dt><dd>{profile?.context_capacity.toLocaleString() || 'Unknown'}</dd><dt>Response reserve</dt><dd>{profile?.reserved_completion.toLocaleString() || 'Unknown'}</dd><dt>Input estimate</dt><dd>{budget ? text(budget.input_total) : 'Not yet emitted'}</dd><dt>Observed TTFT</dt><dd>{receipt?.ttft_ms != null ? text(receipt.ttft_ms) + ' ms' : 'Not reported'}</dd><dt>Token usage</dt><dd>{receipt?.usage && typeof receipt.usage === 'object' && 'prompt_tokens' in receipt.usage ? text(receipt.usage.prompt_tokens) + ' input' : 'Not reported'}</dd></dl>{budget && <p className="muted small">{text(budget.method)}</p>}</section>
+      <aside className="details-pane" aria-label="Task details"><section><h2>Worker</h2><WorkerInfo worker={worker} />{core.status?.simulated && <div className="demo-connection"><button disabled={busy} onClick={() => void command(async () => { await client.request('demo/worker', { connected: !core.status?.demo_connected }) })}>{core.status?.demo_connected ? 'Simulate worker disconnect' : 'Reconnect simulated worker'}</button></div>}</section>
+        <section><h2>Model &amp; context</h2><strong>{detailProfile?.model || 'No profile selected'}</strong><p className="muted small">{profile?.verification} · {profile?.capabilities.join(', ')}</p><dl><dt>Declared capacity</dt><dd>{detailProfile?.context_capacity.toLocaleString() || 'Unknown'}</dd><dt>Response reserve</dt><dd>{detailProfile?.reserved_completion.toLocaleString() || 'Unknown'}</dd><dt>Input estimate</dt><dd>{budget ? text(budget.input_total) : 'Not yet emitted'}</dd><dt>Observed TTFT</dt><dd>{receipt?.ttft_ms != null ? text(receipt.ttft_ms) + ' ms' : 'Not reported'}</dd><dt>Token usage</dt><dd>{receipt?.usage && typeof receipt.usage === 'object' && 'prompt_tokens' in receipt.usage ? text(receipt.usage.prompt_tokens) + ' input' : 'Not reported'}</dd></dl>{budget && <p className="muted small">{text(budget.method)}</p>}</section>
         <section><div className="section-line"><h2>Queue &amp; resources</h2><span className="count">{core.queue.jobs.length}</span></div>{core.queue.active_task_id && <p className="queue-active">Local task active · {short(core.queue.active_task_id)}</p>}
           {!core.queue.jobs.length && !core.queue.leases.length && <p className="muted">No queued or held inference.</p>}
-          {core.queue.jobs.map(job => <div className="queue-row" key={job.id}><div><code>{short(job.task_id)}</code><Badge state={job.state} /></div><span>{job.profile_id} · {job.requested_worker || 'eligible worker'}</span><p className="muted small">{job.waiting_reason || (core.queue.active_task_id !== job.task_id && core.queue.active_task_id ? 'Local task / approval loop is busy' : 'Waiting for Core dispatch')}</p></div>)}
+          {core.queue.jobs.map(job => <div className="queue-row" key={job.id}><div><code>{short(job.task_id)}</code><Badge state={job.state} /></div><span>{job.profile_id} · {job.assigned_worker || job.requested_worker || 'eligible worker'}</span><p className="muted small">{job.waiting_reason || (core.queue.active_task_id !== job.task_id && core.queue.active_task_id ? 'Local task / approval loop is busy' : 'Waiting for Core dispatch')}</p></div>)}
           {core.queue.leases.map(lease => lease.state === 'quarantined' ? <ReconcileLease key={lease.id} lease={lease} busy={busy} onReconcile={() => void command(async () => { await client.request('reconcile/inference', { lease_id: lease.id, confirmed_idle: true }) })} /> : <p className="lease-active" key={lease.id}>Active lease · {lease.worker_id} · {short(lease.id)}</p>)}
           {core.actions.filter(a => a.state === 'outcome_unknown').map(action => <ReconcileAction key={action.id} action={action} busy={busy} onReconcile={body => void command(async () => { await client.request('reconcile/action', body) })} />)}
         </section>

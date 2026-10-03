@@ -19,6 +19,10 @@ COOKIE = "freecompute_session"
 MAX_BODY = 256 * 1024
 
 
+def same_secret(left, right):
+    return hmac.compare_digest(left.encode("utf-8"), right.encode("utf-8"))
+
+
 class APIError(Exception):
     def __init__(self, status, code, message):
         self.status, self.code, self.message = status, code, message
@@ -104,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth(self):
         header = self.headers.get("Authorization", "")
-        if header.startswith("Bearer ") and hmac.compare_digest(header[7:], self.server.token):
+        if header.startswith("Bearer ") and same_secret(header[7:], self.server.token):
             return None  # CLI bearer auth is not ambient browser auth.
         try:
             cookie = SimpleCookie(self.headers.get("Cookie", ""))
@@ -120,7 +124,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _csrf(self, session):
         if session is not None and (self.headers.get("Origin") not in self.server.allowed_origins
-                                    or not hmac.compare_digest(self.headers.get("X-FreeCompute-CSRF", ""), session["csrf"])):
+                                    or not same_secret(self.headers.get("X-FreeCompute-CSRF", ""), session["csrf"])):
             raise APIError(403, "csrf_rejected", "Refresh the authenticated GUI before sending this command")
 
     def _headers(self, content_type):
@@ -204,9 +208,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST" and path == PREFIX + "/auth/session":
                 body = self._body({"token"}, {"token"})
                 token = string(body["token"], "token")
-                if not hmac.compare_digest(token, self.server.token):
+                if not same_secret(token, self.server.token):
                     raise APIError(401, "authentication_required", "Local API token was rejected")
-                session_id, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+                session_id, csrf = secrets.token_urlsafe(32), secrets.token_hex(32)
                 with self.server.auth_lock:
                     now = time.monotonic()
                     self.server.auth = {k: v for k, v in self.server.auth.items() if v["expires"] > now}
@@ -250,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == PREFIX + "/status":
             value = {"api_version": 1, "simulated": self.server.runtime.simulated, "workspace": str(core.store.workspace),
                      "default_profile": core.profile.profile_id, "default_worker": core.selected_worker,
+                     "demo_connected": all(engine.connected for engine in core.registry.engines.values()) if self.server.runtime.simulated else None,
                      "active_task_id": core._running_task_id, "runtime_error": self.server.runtime.last_error}
         elif path == PREFIX + "/sessions":
             value = views.sessions()
