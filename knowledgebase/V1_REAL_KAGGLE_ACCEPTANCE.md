@@ -297,9 +297,15 @@ in 29.063 seconds** after this change; the focused client and engine/CLI suites
 also passed (5 and 12 tests). Older package/install evidence above is historical;
 no new wheel was certified for this client change.
 
-The coding task has read its fixtures and is paused at a real local edit approval.
-Its multi-turn result and the cancellation/unknown-remote-outcome case remain
-pending. GUI readiness will be decided after those cases finish.
+The coding task read both fixtures and proposed the one-line `//` to `/` fix.
+The user explicitly approved it, and FreeCompute applied the local edit with an
+approved interactive record and a completed tool receipt. The fixture tests
+have not yet run. Before the next model turn, the saved tunnel hostname stopped
+resolving (GitHub and Cloudflare DNS still resolved). The task stayed queued
+with no new inference attempt and idle allocation; no Kaggle restart was made.
+The same durable task can resume when the current worker address is supplied.
+Its remaining multi-turn/test result and the cancellation/unknown-remote-outcome
+case remain pending. GUI readiness will be decided after those cases finish.
 
 ## Transport references inspected
 
