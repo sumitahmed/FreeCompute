@@ -31,8 +31,19 @@ class CommandCompleter(Completer):
                 profile = next((p for p in profiles if p["profile_id"] == parts[1]), None)
                 values = [(w, "Worker for " + parts[1]) for w in profile["workers"]] if profile else []
             else:
-                values = [(p["profile_id"], f"{p['model']} | {', '.join(p['capabilities'])} | context {p['context_capacity']:,} declared")
-                          for p in profiles if capability in p["capabilities"]]
+                from harness.telemetry.models import normalize
+                workers = {w['worker_id']: w for w in self.client._core.list_workers()}
+                values = []
+                for p in profiles:
+                    if capability not in p['capabilities']:
+                        continue
+                    summary = f"{p['model']} | {', '.join(p['capabilities'])}"
+                    summary += f" | context {p['context_capacity']:,} declared" if capability == 'text' else ' | configured image workflow'
+                    for identity in p['workers']:
+                        worker = workers.get(identity, {})
+                        gpu_names = ', '.join(str(g['name']['value']) for g in normalize(worker.get('observed_resources', {})).gpus if g['name']['value']) or 'GPU unknown'
+                        summary += f" | {identity}: {worker.get('location', 'unknown')}, {worker.get('health', 'unverified')}, {gpu_names}"
+                    values.append((p['profile_id'], summary))
         elif command == "/resume":
             values = [(s["id"], s["status"] + " | " + s["updated_at"]) for s in self.client.list_sessions()]
         elif command == "/skill":

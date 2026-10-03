@@ -72,18 +72,37 @@ class ComfyUIProvider(BaseProvider):
                 data = json.loads(resp.read().decode("utf-8"))
                 devices = data.get("devices", [])
                 gpus = []
-                for d in devices:
-                    vram_total = d.get("vram_total", 0) // (1024 * 1024)
-                    vram_free = d.get("vram_free", 0) // (1024 * 1024)
-                    vram_used = max(0, vram_total - vram_free)
+                for d in devices if isinstance(devices, list) else []:
+                    if not isinstance(d, dict):
+                        continue
+                    total, free = d.get('vram_total'), d.get('vram_free')
+                    valid = all(isinstance(v, (int, float)) and not isinstance(v, bool) and __import__('math').isfinite(v) and v >= 0 for v in (total, free))
+                    vram_total = total / (1024 * 1024) if valid else None
+                    vram_used = max(0, total - free) / (1024 * 1024) if valid else None
                     gpus.append(GpuTelemetry(
                         index=d.get("index", 0),
-                        name=d.get("name", "Unknown GPU"),
+                        name=scrubber.scrub(d.get("name", "unknown")),
                         vram_used_mib=vram_used,
                         vram_total_mib=vram_total,
-                        temp_c=0,
-                        utilization_pct=0,
+                        temp_c=None,
+                        utilization_pct=None,
                     ))
+                from harness.telemetry.models import normalize, metric
+                telemetry = normalize({})
+                telemetry.metrics['engine_health'] = metric('healthy', 'provider-reported', 'ComfyUI /system_stats connectivity', name='engine_health')
+                system = data.get('system', {})
+                if isinstance(system, dict):
+                    total, free = system.get('ram_total'), system.get('ram_free')
+                    telemetry.metrics['ram_total_bytes'] = metric(total, 'provider-reported', 'ComfyUI /system_stats', name='ram_total_bytes')
+                    if isinstance(total, (int, float)) and isinstance(free, (int, float)):
+                        telemetry.metrics['ram_used_bytes'] = metric(max(0, total - free), 'provider-reported', 'ComfyUI total minus free', name='ram_used_bytes')
+                telemetry.gpus = [{name: metric(value, 'provider-reported', 'ComfyUI /system_stats', name=name) for name, value in (
+                    ('name', gpu.name), ('vram_used_mib', gpu.vram_used_mib), ('vram_total_mib', gpu.vram_total_mib), ('temperature_c', None), ('utilization_pct', None))} for gpu in gpus]
+                if gpus:
+                    telemetry.metrics['gpu_count'] = metric(len(gpus), 'provider-reported', 'ComfyUI /system_stats', name='gpu_count')
+                # Do not persist the remote process argv: it can contain unregistered credentials.
+                data.pop('system', None)
+                data['telemetry'] = telemetry.to_dict()
                 return RemoteHealth(
                     status="healthy",
                     supervisor_uptime_s=0.0,

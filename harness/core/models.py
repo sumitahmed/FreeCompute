@@ -65,10 +65,10 @@ class StreamChunk:
 class GpuTelemetry:
     index: int
     name: str
-    vram_used_mib: int
-    vram_total_mib: int
-    temp_c: int
-    utilization_pct: int
+    vram_used_mib: Optional[float]
+    vram_total_mib: Optional[float]
+    temp_c: Optional[float]
+    utilization_pct: Optional[float]
 
 
 @dataclass
@@ -76,7 +76,7 @@ class RemoteHealth:
     status: str
     supervisor_uptime_s: float
     container_uptime_s: float
-    max_session_s: float
-    seconds_remaining_12h: float
+    max_session_s: Optional[float]
+    seconds_remaining_12h: Optional[float]
     gpus: List[GpuTelemetry] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)

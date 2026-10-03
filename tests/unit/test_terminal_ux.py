@@ -53,7 +53,10 @@ class MenuTests(unittest.TestCase):
     def test_slash_filters_and_argument_completion_uses_declared_routes(self):
         completer = CommandCompleter(self.registry, self.client)
         self.assertEqual([c.text for c in completer.get_completions(Document('/mo'), None)], ['/model', '/models'])
-        self.assertIn(('small', 'small-fixture | code_tools, text | context 65,536 declared'), completer.candidates('/model '))
+        candidates = completer.candidates('/model ')
+        self.assertEqual(candidates[0][0], 'small')
+        self.assertIn('small-fixture | code_tools, text | context 65,536 declared', candidates[0][1])
+        self.assertIn('local-small:', candidates[0][1])
         self.assertEqual(completer.candidates('/image-model '), [])
         self.assertTrue(completer.candidates('/skill web'))
         self.assertEqual(completer.candidates('ordinary prompt'), [])

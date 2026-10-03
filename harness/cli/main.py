@@ -375,10 +375,15 @@ def _list_routes(client, fmt, capability):
     if not routes:
         print("No configured " + capability + " route. " + ("Use /connect-image <URL>." if capability == "image_gen" else "Configure a text worker."))
     for profile in routes:
-        print(fmt.bold(profile['profile_id']) + f" | {profile['model']} | {', '.join(profile['capabilities'])} | {profile['context_capacity']:,} context declared")
+        context = f"{profile['context_capacity']:,} context declared" if capability == 'text' else 'configured image workflow'
+        print(fmt.bold(profile['profile_id']) + f" | {profile['model']} | {', '.join(profile['capabilities'])} | {context}")
         for identity in profile['workers']:
             row = workers.get(identity, {})
             print(f"  {identity} | {row.get('location', 'unknown')} | {row.get('engine', 'unknown')} | health {row.get('health', 'unknown')}")
+            from harness.telemetry.models import normalize
+            for gpu in normalize(row.get('observed_resources', {})).gpus:
+                from harness.cli.telemetry import value
+                print("    " + value(gpu['name']) + " | VRAM " + value(gpu['vram_used_mib'], unit=' MiB') + '/' + value(gpu['vram_total_mib'], unit=' MiB'))
 
 
 def _main():

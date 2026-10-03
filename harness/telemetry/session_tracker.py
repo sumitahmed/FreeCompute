@@ -1,7 +1,7 @@
 """
-harness/telemetry/session_tracker.py — Honest Session & Uptime Tracker.
-Distinguishes locally measured connected uptime from Kaggle container lifetime,
-and computes honest countdown to the 12-hour platform cutoff.
+harness/telemetry/session_tracker.py — Legacy tracker for embedding compatibility.
+Only explicitly supplied limits produce a legacy estimate. The CLI uses the
+provider-neutral WorkerTelemetry contract; this tracker is not account evidence.
 """
 
 from harness.security import scrubber
@@ -67,7 +67,7 @@ class SessionTracker:
 
     @property
     def seconds_remaining_in_12h_session(self) -> Optional[float]:
-        """Remaining seconds before Kaggle terminates the 12-hour session."""
+        """Compatibility name: estimate against an explicitly supplied legacy limit."""
         container_age = self.estimated_container_uptime_seconds
         if container_age is None or self.session_limit_seconds is None:
             return None
