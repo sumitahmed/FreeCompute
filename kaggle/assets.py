@@ -9,7 +9,7 @@ import shutil
 import subprocess
 
 BUILD_FLAGS = ['GGML_CUDA=ON', 'GGML_CUDA_NO_VMM=ON', 'CMAKE_CUDA_ARCHITECTURES=75',
-               'CMAKE_BUILD_TYPE=Release', 'LLAMA_BUILD_TESTS=OFF']
+               'CMAKE_BUILD_TYPE=Release', 'LLAMA_BUILD_TESTS=OFF', 'LLAMA_CURL=OFF', 'GGML_NATIVE=OFF']
 CUDA_LIBRARIES = ('libcudart.so.12', 'libcublas.so.12', 'libcublasLt.so.12')
 
 
@@ -42,8 +42,10 @@ def verify_asset_manifest(manifest_path, config):
     if manifest_path.is_symlink():
         raise ValueError('Dataset manifest must not be a symlink')
     data = json.loads(manifest_path.read_text(encoding='utf-8'))
+    if not isinstance(data, dict):
+        raise ValueError('Dataset manifest must be a mapping')
     engine = data.get('engine', {})
-    if data.get('schema_version') != 1 or engine.get('commit') != config['LLAMA_COMMIT'] or engine.get('cuda_arch') != '75' or engine.get('build_flags') != BUILD_FLAGS:
+    if not isinstance(engine, dict) or data.get('schema_version') != 1 or engine.get('commit') != config['LLAMA_COMMIT'] or engine.get('cuda_arch') != '75' or engine.get('build_flags') != BUILD_FLAGS:
         raise ValueError('Dataset engine does not match the pinned T4 build')
     libc, version = platform.libc_ver()
     required = engine.get('minimum_glibc', '')
@@ -53,11 +55,11 @@ def verify_asset_manifest(manifest_path, config):
         raise ValueError('Dataset engine platform is unsupported')
     files = engine.get('files', {})
     server = engine.get('server', '')
-    if not isinstance(files, dict) or not server.startswith('engine/') or server not in files or not files:
+    if not isinstance(files, dict) or not isinstance(server, str) or not server.startswith('engine/') or server not in files or not files:
         raise ValueError('Dataset engine manifest has no server/checksums')
     root = manifest_path.parent
     for name, digest in files.items():
-        if not name.startswith('engine/') or not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+        if not isinstance(name, str) or not name.startswith('engine/') or len(PurePosixPath(name).parts) != 2 or not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
             raise ValueError('Invalid engine file checksum declaration')
         path = asset_path(root, name)
         if not path.is_file() or asset_sha256(path) != digest:
@@ -70,6 +72,8 @@ def verify_asset_manifest(manifest_path, config):
             raise ValueError('Dataset engine is missing a required runtime library')
     model_path = None
     model = data.get('model')
+    if model and not isinstance(model, dict):
+        raise ValueError('Invalid model manifest')
     if model:
         if (model.get('repo'), model.get('revision'), model.get('filename')) == (config['REPO_ID'], config['REVISION'], config['FILENAME']):
             model_path = asset_path(root, model.get('path', ''))
@@ -108,6 +112,8 @@ def build_source_engine(config, scratch, destination=None, report=print):
     commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if commit != config['LLAMA_COMMIT']:
         raise RuntimeError('Source checkout does not match the configured engine pin')
+    if subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True).strip():
+        raise RuntimeError('Build checkout has local changes; refusing to call it the pinned source')
     build = source / 'build'
     subprocess.run(['cmake', '-S', str(source), '-B', str(build), *['-D' + flag for flag in BUILD_FLAGS]], check=True)
     subprocess.run(['cmake', '--build', str(build), '--target', 'llama-server', '--parallel', '2'], check=True)
