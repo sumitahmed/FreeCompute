@@ -324,7 +324,7 @@ degraded health, or VRAM growth was observed in the three dispatched cases.
 the earlier READY usage null. It now requests usage using the pinned engine's
 supported schema. A regression uses an empty-choices terminal usage chunk and
 checks actual counts reach the client. The live read and context cases confirmed
-the fix against the unchanged worker. The full local suite passed **206 tests
+the fix against the unchanged worker. At that checkpoint the full local suite passed **206 tests
 in 29.063 seconds** after this change; the focused client and engine/CLI suites
 also passed (5 and 12 tests). Older package/install evidence above is historical;
 no new wheel was certified for this client change.
@@ -342,9 +342,21 @@ line bound, deadlines and quarantine rules were not raised or disabled.
 A regression reproduced the false failure for the same 7,500-byte output split
 into smaller packets. It passes after the fix. Further regressions verify
 oversized UTF-8 reasoning still quarantines and oversized tool fragments cannot
-reach approval/execution. All **29 runtime tests passed in 2.649 seconds**; the
+reach approval/execution. A fourth regression preserves quarantine when even an
+empty packet precedes an adapter's later not-started error; packet observation
+is tracked independently of payload size. All **30 runtime tests passed in 2.819 seconds**; the
 required full command `python -m unittest discover -s tests/unit -p "test_*.py"`
-then passed **209 tests in 41.157 seconds**, without weakening existing assertions.
+finally passed **210 tests in 42.947 seconds**, without weakening existing assertions.
+
+One full run exposed a Windows loopback fixture issue: the fake authentication
+server left its POST body unread and the client observed connection abort
+`WinError 10053` instead of the intended 401. Quarantine on that transport error
+was correct. The fixture now drains the body before returning 401, retaining its
+original assertions and adding a `remote_outcome=not_started` receipt witness.
+The preceding modules plus this case passed together (17 tests in 1.895 seconds)
+before the successful full run. The tracked-file secret scan covered 150 files,
+found no configured pattern matches, and confirmed the actual local key was
+absent from tracked content. Runtime URLs/keys remain private and ignored.
 
 The user supplied an actual read-only Kaggle `/slots` observation:
 `[{'id': 0, 'is_processing': False}]`. That observation supported explicit

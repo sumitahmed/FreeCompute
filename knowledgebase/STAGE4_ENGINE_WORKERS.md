@@ -179,9 +179,15 @@ claims persisted across Core restart and blocked further dispatch.
 The client now requests streamed usage. A second discovered defect counted
 fixed JSON framing for every text/reasoning packet toward the payload allowance;
 the fix counts UTF-8 text/reasoning payload while preserving bounded tool
-fragments and fail-closed oversized output. Three regressions were added; the
+fragments and fail-closed oversized output. Four regressions were added; the
 fragmentation regression failed before the fix and passed after it. The full
-unit suite passed **209 tests in 41.157s**, including all previous assertions.
+unit suite passed **210 tests in 42.947s**, including all previous assertions.
+Packet observation stays independent of byte accounting, so even an empty
+packet prevents a later not-started error from clearing uncertain capacity.
+The loopback 401 fixture now drains its POST body to prevent Windows connection
+abort from masking its intended rejection; its original assertions remain and
+the not-started receipt is additionally verified. The tracked-file scan covered
+150 files with zero configured secret-pattern findings and no actual local key.
 No additional runtime dependency or package certification is claimed. Exact live
 measurements, the first failed cancellation probe, operator-confirmed idle
 reconciliation and successful retry are in

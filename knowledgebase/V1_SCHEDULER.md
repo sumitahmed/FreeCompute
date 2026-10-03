@@ -43,7 +43,7 @@ Successful health alone never released either unknown lease.
 The four-turn real coding task also resumed from local receipts after a saved
 tunnel address became unreachable and the user supplied its current address.
 The approved edit and command each executed once; all three local tests passed.
-The required full local suite passed **209 tests in 41.157 seconds** after the
+The required full local suite passed **210 tests in 42.947 seconds** after the
 stream-accounting fix. These results qualify the bounded backend for GUI
 development, with unknown outcomes and reconciliation exposed through Core.
 All live tests are complete; the user can shut down Kaggle.
