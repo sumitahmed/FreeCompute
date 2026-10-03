@@ -12,6 +12,7 @@ export function ApprovalCard({ approval, deciding, onDecision }: { approval: App
     <div className="approval-heading"><span className="approval-icon">!</span><div><strong>Approval required</strong><span>{approval.tool} · one local action</span></div></div>
     {approval.preview.path && <p className="target">{text(approval.preview.path)}</p>}
     {approval.preview.command && <pre className="command">$ {text(approval.preview.command)}</pre>}
+    {typeof approval.preview.content === 'string' && <pre aria-label="Proposed file content">{approval.preview.content}</pre>}
     {approval.diff ? <Diff value={approval.diff} /> : <details><summary>Exact tool arguments</summary><pre>{JSON.stringify(approval.preview, null, 2)}</pre></details>}
     <p className="muted">{approval.tool === 'run_command' ? 'Runs on your local host in the workspace.' : 'Changes the local workspace after Core validates the target.'} This decision grants only this action.</p>
     <details className="binding"><summary>Revision &amp; file witness</summary><dl>

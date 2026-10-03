@@ -32,17 +32,25 @@ class DemoEngine:
             raise EngineFailure("SIMULATED engine authentication failure; check worker credentials", remote_not_started=True, kind="authentication")
         tool = None
         if "[demo:edit]" in prompt:
-            stages = [("read_file", {"path": "calculator.py"}),
-                      ("edit_file", {"path": "calculator.py", "old_str": "return a // b", "new_str": "return a / b"}),
-                      ("run_command", {"command": f'"{sys.executable}" -m unittest -v test_calculator', "timeout_seconds": 30})]
+            already_fixed = bool(results and "return a / b" in json.loads(results[0]["content"]).get("raw_content", ""))
+            stages = [("read_file", {"path": "calculator.py"})]
+            if not already_fixed:
+                stages.append(("edit_file", {"path": "calculator.py", "old_str": "return a // b", "new_str": "return a / b"}))
+            stages.append(("run_command", {"command": f'"{sys.executable}" -m unittest -v test_calculator', "timeout_seconds": 30}))
             if len(results) < len(stages):
                 tool = stages[len(results)]
-                text = ["I will read the disposable calculator. ", "The division truncates fractions. Review this replacement. ", "I will run the local calculator tests after approval. "][len(results)]
+                text = ("I will read the disposable calculator. " if tool[0] == "read_file" else
+                        "The division truncates fractions. Review this replacement. " if tool[0] == "edit_file" else
+                        "I will run the local calculator tests after approval. ")
             else:
-                edit, command = (json.loads(m["content"]) for m in results[1:3])
-                text = ("SIMULATED assistant: Changed integer division to true division. The real local unittest command exited 0. "
-                        if edit.get("status") == "applied" and command.get("exit_code") == 0 else
+                edit_ok = already_fixed or json.loads(results[1]["content"]).get("status") == "applied"
+                command = json.loads(results[-1]["content"])
+                text = ("SIMULATED assistant: " + ("The calculator already uses true division. " if already_fixed else "Changed integer division to true division. ") + "The real local unittest command exited 0. "
+                        if edit_ok and command.get("exit_code") == 0 else
                         "SIMULATED assistant: The change or command was denied or failed. Inspect the local receipts; tests are not confirmed passing. ")
+        elif "[demo:write]" in prompt and not results:
+            tool = ("write_file", {"path": "demo-note.txt", "content": "A disposable GUI fixture note.\n"})
+            text = "Review this local file creation. No file is written until you approve. "
         else:
             text = "SIMULATED assistant: This is deterministic local development output. No model or GPU was contacted. "
         if "[demo:long]" in prompt:
