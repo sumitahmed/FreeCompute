@@ -41,6 +41,16 @@ Package scripts print external evidence directories holding `acceptance.json`,
 transcripts and decoded `screens.json`. The final wheel's runtime is byte-identical
 to the accepted wheel; its last rebuild corrects README metadata only.
 
+Final wheel: `freecompute-0.1.0-py3-none-any.whl`, SHA256
+`0eb1f5156b867fd5b270093550c5dfcd3972a14095970c86744d26e6197c3c0b`.
+It was reinstalled in the acceptance venv and the normal Python installation.
+Windows held the old running launcher open, so the global install used PyPA
+installer while preserving its verified unchanged entrypoint/interpreter and
+recording its hash. All 51 global runtime files match the wheel. The bare
+command's help/version, bundled skills and current command registry also passed
+outside the checkout. No running CLI or remote worker was terminated; restart
+the old CLI to load the new version.
+
 ### Product and public tree
 
 - `prompt-toolkit>=3.0.48,<4` and `rich>=13.9,<15` are the two new direct product
