@@ -221,6 +221,42 @@ class LocalRuntimeTests(unittest.TestCase):
         core.inference.reconcile_idle(lambda *_: True)
         self.assertEqual(core.resume(core.task(tid)["session_id"])["status"], "completed")
 
+    def test_stream_payload_limit_is_independent_of_text_packet_size(self):
+        core = self.start(profile=replace(self.profile, reserved_completion=256))
+        text, reasoning = "x" * 6000, "y" * 1500
+        for packet_size in (6000, 64):
+            with self.subTest(packet_size=packet_size):
+                chunks = [StreamChunk(delta_reasoning=reasoning[i:i + packet_size])
+                          for i in range(0, len(reasoning), packet_size)]
+                chunks += [StreamChunk(delta_content=text[i:i + packet_size])
+                           for i in range(0, len(text), packet_size)]
+                chunks += [StreamChunk(finish_reason="stop"), StreamChunk(stream_complete=True)]
+                self.engine.replies.append(chunks)
+                result = core.run(core.submit("short prompt", allowed_tools=[]))
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["final_answer"], text)
+                self.assertEqual(core.inference.allocation()["state"], "idle")
+
+    def test_stream_payload_limit_still_bounds_utf8_reasoning(self):
+        core = self.start([StreamChunk(delta_reasoning="π" * 4097)] + text_reply("done"),
+                          profile=replace(self.profile, reserved_completion=256))
+        result = core.run(core.submit("short prompt", allowed_tools=[]))
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(core.inference.allocation()["state"], "quarantined")
+        self.assertIn("stream byte allowance", core.store.one("SELECT error FROM inference_attempts")["error"])
+        self.assertEqual(core.store.all("SELECT * FROM actions"), [])
+
+    def test_oversized_tool_fragments_are_rejected_before_approval(self):
+        core = self.start(tool_reply([("large", "write_file", {"path": "blocked.txt", "content": "z" * 9000})]),
+                          profile=replace(self.profile, reserved_completion=256))
+        approvals = []
+        result = core.run(core.submit("short prompt"), approval_resolver=lambda *args: approvals.append(args) or True)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(core.inference.allocation()["state"], "quarantined")
+        self.assertEqual(approvals, [])
+        self.assertEqual(core.store.all("SELECT * FROM actions"), [])
+        self.assertFalse((self.workspace / "blocked.txt").exists())
+
     def test_one_active_allocation_and_profile_change_refusal(self):
         entered, release = threading.Event(), threading.Event()
         core = self.start()

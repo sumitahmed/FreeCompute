@@ -121,8 +121,11 @@ class InferenceBroker:
             for chunk in (() if remote_not_started else engine.stream(profile, messages, tools, cancellation)):
                 if cancellation.is_cancelled:
                     break
-                received_bytes += len(json.dumps({"text": chunk.delta_content, "reasoning": chunk.delta_reasoning,
-                    "tools": chunk.tool_call_deltas}, ensure_ascii=True).encode("utf-8"))
+                # Text/reasoning size must not depend on how the server splits packets.
+                received_bytes += len((chunk.delta_content or "").encode("utf-8"))
+                received_bytes += len((chunk.delta_reasoning or "").encode("utf-8"))
+                if chunk.tool_call_deltas:
+                    received_bytes += len(json.dumps(chunk.tool_call_deltas, ensure_ascii=False).encode("utf-8"))
                 if received_bytes > stream_limit:
                     raise ValueError("Inference output exceeded the profile's stream byte allowance; no proposals accepted")
                 if done and (chunk.delta_content or chunk.tool_call_deltas or chunk.delta_reasoning):
