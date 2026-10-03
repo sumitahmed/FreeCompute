@@ -68,6 +68,7 @@ class MockSupervisorHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/v1/chat/completions":
             if not self.check_auth():
                 return
+            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -92,6 +93,9 @@ class MockSupervisorHandler(http.server.BaseHTTPRequestHandler):
                 time.sleep(0.01)
 
             try:
+                if payload.get("stream_options", {}).get("include_usage"):
+                    usage = {"choices": [], "usage": {"prompt_tokens": 14, "completion_tokens": 7, "total_tokens": 21}}
+                    self.wfile.write(f"data: {json.dumps(usage)}\n\n".encode("utf-8"))
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
@@ -162,6 +166,16 @@ class TestKaggleBrainClient(unittest.TestCase):
                 token.cancel()
 
         self.assertLess(len(collected), 5)
+
+    def test_stream_requests_usage_and_accepts_empty_choices_usage_chunk(self):
+        client = KaggleBrainClient(
+            base_url=f"http://127.0.0.1:{self.port}",
+            api_key="test-secret-token",
+        )
+        chunks = list(client.stream_chat([{"role": "user", "content": "Write add"}]))
+        usage = [chunk.usage for chunk in chunks if chunk.usage is not None]
+        self.assertEqual(usage, [{"prompt_tokens": 14, "completion_tokens": 7, "total_tokens": 21}])
+        self.assertTrue(chunks[-1].stream_complete)
 
 
 if __name__ == "__main__":

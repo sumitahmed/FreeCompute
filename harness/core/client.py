@@ -150,6 +150,7 @@ class KaggleBrainClient:
             "model": model or self.model_alias,
             "messages": [m.to_dict() if hasattr(m, "to_dict") else m for m in messages],
             "stream": True,
+            "stream_options": {"include_usage": True},
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
