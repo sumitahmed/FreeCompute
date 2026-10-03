@@ -36,7 +36,7 @@ class CommandCompleter(Completer):
         elif command == "/resume":
             values = [(s["id"], s["status"] + " | " + s["updated_at"]) for s in self.client.list_sessions()]
         elif command == "/skill":
-            values = [(s.name, s.slash_command + " | " + s.description) for s in self.registry.skills.skills.values()]
+            values = [(s.name, s.slash_command + " | " + s.description) for s in self.registry.skills.skills.values()] if self.registry.skills else []
         else:
             values = []
         return [(value, description) for value, description in values if value.lower().startswith(word.lower())]

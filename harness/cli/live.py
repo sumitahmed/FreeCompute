@@ -32,7 +32,7 @@ class LiveTelemetry:
                 t = normalize(health.raw)
                 with self.presentation.output_lock:
                     # Never interrupt a streamed paragraph or an approval prompt.
-                    if self.presentation.waiting_worker != worker or self.presentation.line_open:
+                    if self.presentation.waiting_worker != worker or self.presentation.line_open or self.presentation.markdown_live:
                         continue
                     m = t.metrics
                     safe_print(terminal_text("  Live " + worker + " | " + health.status + " | CPU " + value(m['cpu_utilization_pct'], unit='%') + " | session remaining " + value(m['session_remaining_seconds'], duration=True)), file=sys.stderr)

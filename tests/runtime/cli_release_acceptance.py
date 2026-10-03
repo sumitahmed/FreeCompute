@@ -40,6 +40,7 @@ def main():
     for name in ("pyproject.toml", "README.md", "LICENSE"):
         shutil.copy2(REPO / name, source / name)
     shutil.copytree(REPO / "harness", source / "harness", ignore=shutil.ignore_patterns("experiments", "__pycache__", "*.pyc"))
+    shutil.copytree(REPO / 'skills', source / 'skills')
     env = {k:v for k,v in os.environ.items() if not k.startswith(("FREECOMPUTE_", "HARNESS_", "RELAYFORGE_")) and k not in {"PYTHONPATH", "FC_FIXTURE_KEY"}}
     env.update(LOCALAPPDATA=str(root / "state"), PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1", NO_COLOR="1")
     results, transcripts = [], []
@@ -66,6 +67,8 @@ def main():
         for name in shipped:
             assert bundle.read(name) == (source / name).read_bytes(), name
         assert "harness/config.sample.yaml" in names
+        for skill in ('code-reviewer', 'web-researcher', 'neetcode-solver'):
+            assert any(p.endswith('share/freecompute/skills/' + skill + '/SKILL.md') for p in names)
     record("wheel inventory and byte comparison", python_files=len(shipped), wheel=wheel.name,
            sha256=hashlib.sha256(wheel.read_bytes()).hexdigest())
     print("Installing into a clean virtual environment...", flush=True)

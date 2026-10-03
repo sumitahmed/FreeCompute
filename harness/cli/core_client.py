@@ -116,7 +116,8 @@ class CoreClient:
         return self._core.list_queue()
 
     def select_model(self, profile_id, worker_id=None):
-        profile_id = self._resolve_id(profile_id, self.models(), "profile_id", "model")
+        rows = [p for p in self.models() if "text" in p['capabilities']]
+        profile_id = self._resolve_id(profile_id, rows, "profile_id", "model")
         return self._core.select_model(profile_id, worker_id)
 
     def run_next(self, **callbacks):

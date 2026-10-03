@@ -24,6 +24,7 @@ config.yaml
 .freecompute.yaml
 .relayforge.yaml
 .image_server_url
+/apps/gui/
 *.pem
 *.key
 

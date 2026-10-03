@@ -145,7 +145,7 @@ ENGINE_PROVENANCE = {
     'cuda_devices_observed': devices.strip(),
 }
 if globals().get('cached_engine_provenance'):
-    ENGINE_PROVENANCE.update(cached_engine_provenance)
+    ENGINE_PROVENANCE = dict(cached_engine_provenance)
     ENGINE_PROVENANCE['cuda_devices_observed'] = devices.strip()
 print('ENGINE DOWNLOAD VERIFIED; BOTH T4 GPUs DETECTED.')
 print('llama-server ready at:', SERVER_BIN)
