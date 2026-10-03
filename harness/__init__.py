@@ -1,6 +1,3 @@
-"""
-Kaggle x Qwen Standalone Coding Harness Package.
-Authoritative Windows Controller for Remote Dual-T4 Qwen Inference.
-"""
+"""FreeCompute: local CLI authority with configurable inference workers."""
 
 __version__ = "0.1.0"

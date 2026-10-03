@@ -43,3 +43,7 @@ freecompute = "harness.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["harness*"]
+exclude = ["harness.experiments*"]
+
+[tool.setuptools.package-data]
+harness = ["config.sample.yaml"]

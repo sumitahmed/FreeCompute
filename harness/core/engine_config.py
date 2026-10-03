@@ -1,5 +1,5 @@
 """Local composition of configured adapters; no credentials enter durable descriptors."""
-import os
+from urllib.parse import urlsplit
 
 from harness.core.engines import ComfyUIEngine, LlamaCppEngine, OpenAICompatibleEngine
 from harness.core.runtime_models import ModelProfile, Worker
@@ -8,6 +8,11 @@ from harness.providers.llamacpp import LlamaCppProvider
 from harness.providers.openai_compatible import OpenAICompatibleProvider
 from harness.security import scrubber
 from harness.storage.runtime import fingerprint
+
+
+def require_remote_auth(url, key):
+    if not key and urlsplit(url).hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("Remote text workers require a bearer key; set FREECOMPUTE_API_KEY or the worker's api_key_env")
 
 
 def configured_engines(config, workspace):
@@ -26,11 +31,13 @@ def configured_engines(config, workspace):
             raise ValueError("Worker references an unknown or empty model profile list")
         models = [profiles[p] for p in connection.profiles]
         capabilities = frozenset().union(*(p.capabilities for p in models))
-        key = os.environ.get(connection.api_key_env, "") if connection.api_key_env else connection.api_key
+        key = config.resolve_api_key(connection.api_key_env) if connection.api_key_env else connection.api_key
         if connection.api_key_env and not key:
             raise ValueError("Worker API-key environment variable is unset")
         scrubber.register_secret(key)
         scrubber.register_secret(connection.url)
+        if connection.engine != "ComfyUI":
+            require_remote_auth(connection.url, key)
         if connection.engine == "llama.cpp":
             adapter = LlamaCppEngine(LlamaCppProvider(connection.url, key, models[0].model, connection.timeout_seconds or config.request_timeout_seconds).client)
         elif connection.engine == "openai-compatible":
@@ -48,6 +55,7 @@ def configured_engines(config, workspace):
                         concurrency_limit=connection.concurrency_limit, resource_pool=connection.resource_pool, resources=connection.resources)
         attachments.append((worker, models, adapter))
     if not attachments:
+        require_remote_auth(config.remote_url, config.api_key)
         capabilities = frozenset({"text", "code_tools"}) if config.engine == "llama.cpp" else frozenset({"text"})
         profile = ModelProfile(fingerprint({"model": config.model_alias, "engine": config.engine, "context": config.max_context_tokens}),
                                "supervisor-text", config.model_alias, config.engine, capabilities, config.max_context_tokens,

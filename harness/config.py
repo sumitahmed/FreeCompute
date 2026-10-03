@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional, Literal
 import yaml
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ConfigDict, field_validator
 from harness.security import scrubber
 from urllib.parse import urlsplit
 
@@ -45,7 +45,11 @@ class WorkerConnection(BaseModel):
     @classmethod
     def validate_url(cls, value):
         url = urlsplit(value)
-        if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment:
+        try:
+            port = url.port
+        except ValueError:
+            raise ValueError("Worker endpoint has an invalid port") from None
+        if url.scheme not in {"http", "https"} or not url.hostname or port == 0 or url.username or url.password or url.query or url.fragment:
             raise ValueError("Worker endpoint must be HTTP(S) without URL credentials, queries or fragments")
         return value
 
@@ -60,6 +64,7 @@ class WorkerConnection(BaseModel):
 
 class HarnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True, hide_input_in_errors=True)
+    _dotenv_values: dict[str, str] = PrivateAttr(default_factory=dict)
     remote_url: str = Field(default="http://127.0.0.1:8081", description="URL of the remote Kaggle supervisor")
     api_key: str = Field(default="", repr=False, description="Bearer token for Kaggle supervisor")
     model_alias: str = Field(default="qwen3.8-27b-huihui-abliterated-q4", description="Model alias registered in llama-server")
@@ -81,7 +86,11 @@ class HarnessConfig(BaseModel):
     def validate_url(cls, value):
         if value:
             url = urlsplit(value)
-            if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment:
+            try:
+                port = url.port
+            except ValueError:
+                raise ValueError("Endpoint has an invalid port") from None
+            if url.scheme not in {"http", "https"} or not url.hostname or port == 0 or url.username or url.password or url.query or url.fragment:
                 raise ValueError("Expected HTTP(S) URL without embedded credentials")
         return value
 
@@ -94,17 +103,25 @@ class HarnessConfig(BaseModel):
 
     @classmethod
     def load(cls, config_path=None):
-        """Defaults < YAML < .env < process env; canonical names beat legacy aliases."""
+        """Defaults < YAML < config-side .env < cwd .env < process env."""
         data = {}
         path = Path(config_path or "config.yaml")
         if config_path or path.exists():
-            loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            try:
+                loaded = yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
+            except yaml.YAMLError as exc:
+                mark = getattr(exc, "problem_mark", None)
+                location = f" at line {mark.line + 1}" if mark else ""
+                raise ValueError("Invalid YAML configuration" + location + "; check its syntax") from None
             if not isinstance(loaded, dict):
                 raise ValueError("Configuration YAML must be a mapping")
             data.update(loaded)
-        environment = {}
-        dotenv = Path(".env")
-        if dotenv.is_file():
+        environment, dotenv_layers = {}, []
+        dotenv_paths = [path.resolve().parent / ".env", Path(".env").resolve()]
+        for dotenv in dict.fromkeys(dotenv_paths):
+            if not dotenv.is_file():
+                continue
+            values = {}
             # Literal KEY=value syntax only: no interpolation or command execution.
             for raw in dotenv.read_text(encoding="utf-8-sig").splitlines():
                 line = raw.strip()
@@ -116,14 +133,16 @@ class HarnessConfig(BaseModel):
                 value = value.strip()
                 if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
                     value = value[1:-1]
-                environment[key.strip()] = value
+                values[key.strip()] = value
+            environment.update(values)
+            dotenv_layers.append(values)
         names = {"remote_url": "REMOTE_URL", "api_key": "API_KEY", "image_server_url": "IMAGE_SERVER",
                  "model_alias": "MODEL_ALIAS", "transport": "TRANSPORT", "workspace_root": "WORKSPACE",
                  "request_timeout_seconds": "TIMEOUT", "max_context_tokens": "MAX_CONTEXT_TOKENS",
                  "journal_dir": "JOURNAL_DIR", "poll_health_interval_seconds": "POLL_HEALTH_INTERVAL_SECONDS"}
         names.update(engine="ENGINE", selected_profile="PROFILE", selected_worker="WORKER")
         # Resolve each layer separately: even a legacy process variable beats .env.
-        for layer in (environment, os.environ):
+        for layer in (*dotenv_layers, os.environ):
             for field, suffix in names.items():
                 for prefix in ("FREECOMPUTE", "RELAYFORGE", "HARNESS"):
                     key = prefix + "_" + suffix
@@ -134,4 +153,10 @@ class HarnessConfig(BaseModel):
             for key, value in layer.items():
                 if "API_KEY" in key or key == "api_key":
                     scrubber.register_secret(value)
-        return cls(**data)
+        config = cls(**data)
+        config._dotenv_values = environment
+        return config
+
+    def resolve_api_key(self, name):
+        """Resolve worker credentials without mutating the process environment."""
+        return os.environ.get(name, self._dotenv_values.get(name, ""))
