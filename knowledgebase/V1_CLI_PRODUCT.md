@@ -1,6 +1,6 @@
 # FreeCompute V1 CLI product
 
-2026-10-03. Final CLI pass on local `v1/cli-release`, based on accepted backend
+2026-10-04. Final CLI pass on local `v1/cli-release`, based on accepted backend
 `755e944`. CLI → Core → native agent runtime → queue/scheduler → worker/model
 registry → local/Kaggle/private inference is the V1 product. GUI is
 **DEFERRED / ABANDONED FOR V1**. No frontend, browser API, daemon or subagents
@@ -74,24 +74,47 @@ Registry mode still rejects single-worker `--api-key`/`--engine` flags.
 Non-loopback text endpoints require a bearer
 key. Local loopback engines may explicitly run without auth; the public Kaggle
 supervisor's mandatory authentication remains unchanged. ComfyUI keeps its
-existing protected-endpoint requirement and lacks a bearer transport contract.
+fixed workflow. Non-loopback image routes require a separately configured bearer
+key for an authenticated gateway; authenticated redirects are rejected.
 
 No worker configured means setup guidance, not simulated inference or a created
 tunnel. Local state uses the existing per-user runtime outside workspace/OneDrive;
 `journal_dir` retains legacy quota/undo compatibility. The unused historical poll
-interval remains parseable for compatibility but does not create a background
-health poller. Model route selection applies to new tasks in this process;
+interval remains parseable for compatibility. Interactive model waits use a bounded
+15-second optional telemetry poll, not a scheduler or inference retry daemon. Model route selection applies to new tasks in this process;
 restart defaults come from configuration. Existing queued tasks do not rebind.
+
+## Terminal and independent routes
+
+The normal prompt uses prompt_toolkit completion/history/multiline input. `/`
+opens a live palette; prefix filters, arrows, Enter, Tab and Escape work. Help,
+completion, aliases and custom skills share `harness/cli/commands.py`. Model
+completion reads cached declarations/observations and never probes on a keypress.
+`/model` lists text/code profiles and observed worker/provider/GPU state.
+`/image-model` lists image routes; `/connect-image` changes only that image route.
+`/skill` selects a bundled/user/project manifest; `/skills` refreshes discovery.
+Skills do not expand tool permission. An unsupported/dumb/redirected terminal
+falls back to the plain prompt; ANSI escapes are stripped as complete sequences
+before nested formatting, and Windows VT must be enabled before emitting color.
+Rich renders streamed Markdown on supported terminals with bounded redraw rate;
+plain output still streams immediately. Neither path displays chain of thought.
+
+See [WORKER_TELEMETRY.md](WORKER_TELEMETRY.md) for generic metrics/provenance,
+unknown deadlines/quota, stale samples, and optional live polling. See
+[KAGGLE_FAST_START.md](KAGGLE_FAST_START.md) for the verified private dataset path,
+pinned-source fallback, current cells and guarded shutdown.
 
 ## Commands
 
 `/help`, `/status`, `/connect <URL>`, `/model [profile] [worker]`, `/models`, `/workers`, `/queue`,
-`/sessions`, `/resume <id>`, `/new`, `/skills`, `/diff`, `/undo`,
+`/sessions`, `/resume <id>`, `/new`, `/skills`, `/skill [name] [request]`, `/diff`, `/undo`,
+`/connect-image <URL>`, `/image-model [profile] [worker]`,
 `/cancel [task-id]`, `/clear`, `/image <prompt>`, `/exit`.
 
 Recovery help exposes `/run-next`, `/actions`,
 `/reconcile <action-id> <completed|not_executed> [sha256|absent]`,
-`/reconcile-inference [lease-id]`, `/quota [hours]`, and `/image-server [url]`.
+`/reconcile-inference [lease-id]` and `/quota [hours]`. `/image-server <URL>` is a
+compatibility alias for `/connect-image` and performs the same safe probe.
 Existing `exit`/`quit`, `/quit`, `/health` and `/skills list` aliases remain.
 Registered skill commands are discovered locally; unknown commands are errors.
 

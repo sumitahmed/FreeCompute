@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional, Literal
 import yaml
-from pydantic import BaseModel, Field, PrivateAttr, ConfigDict, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ConfigDict, field_validator, model_validator
 from harness.security import scrubber
 from urllib.parse import urlsplit
 
@@ -42,6 +42,12 @@ class WorkerConnection(BaseModel):
     timeout_seconds: Optional[int] = Field(default=None, gt=0, strict=True)
     session_limit_seconds: Optional[int] = Field(default=None, gt=0, strict=True)
     session_has_no_deadline: bool = False
+
+    @model_validator(mode='after')
+    def validate_session_limit(self):
+        if self.session_has_no_deadline and self.session_limit_seconds is not None:
+            raise ValueError('Configure a session limit or no deadline, not both')
+        return self
 
     @field_validator("url")
     @classmethod

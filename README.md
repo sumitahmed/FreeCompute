@@ -69,28 +69,32 @@ Closing the CLI does not stop a remote GPU session.
 ## Kaggle worker
 
 Upload **`kaggle/freecompute_dual_gpu_server.ipynb`** from this checkout.
-`kaggle/universal_dual_gpu_server.ipynb` is its synchronized wrapper. Historical
-proof notebooks are evidence, not the current authenticated worker.
+`kaggle/universal_dual_gpu_server.ipynb` is an identical compatibility copy.
+The root text/image proof notebooks are historical examples.
 
-1. Set accelerator **GPU T4 x2**, Internet **ON**, Persistence **None**; no inputs
-   or datasets are required by this notebook. Provider availability/quota varies.
-2. Add and enable the private Kaggle Secret `FREECOMPUTE_API_KEY` matching your
-   local key. Default Cloudflare mode does not require a Tailscale auth key.
-3. Run code cells **1–8 individually and in order**. Stop on any error. **Do not
-   Run All or Save & Run All**; the last code cell is guarded shutdown.
-4. Cell 4 must verify the downloaded engine and both T4 GPUs, cell 6 the healthy
-   supervisor, and cell 8 `WORKER READY FOR LOCAL ACCEPTANCE`. Pass cell 7's URL
-   to `freecompute --remote-url "URL"` or `/connect URL`. A notebook ready marker alone does
-   not prove connectivity or model inference from your computer.
-5. While FreeCompute uses the worker, keep Kaggle running and do not rerun setup,
-   model or transport cells. After work ends, use guarded code cell 9 and Kaggle
-   **Stop Session** to end GPU allocation.
+1. Set **GPU T4 x2**, **Internet ON**, **Persistence None**. Enable Kaggle Secret
+   `FREECOMPUTE_API_KEY` with the same private value as your local `.env`.
+2. Optional: Add Input ? your own private assets dataset from
+   `kaggle/dataset_builder.ipynb`. Cell 3 verifies engine/library and pinned GGUF
+   hashes; Cell 4 verifies the engine version and both GPUs. No dataset is required.
+3. Run code cells **1?8 in order**. Stop on errors. Fresh-session **Run All is safe**:
+   Cell 9 skips shutdown unless you explicitly change its confirmation. Do not rerun
+   setup/Run All while the CLI uses the worker. Avoid Save & Run All for interactive use.
+4. Expect Cell 6 `SUPERVISOR HEALTHY` and Cell 8 `WORKER READY FOR LOCAL ACCEPTANCE`.
+   Pass Cell 7's temporary URL to `freecompute --remote-url "URL"`.
+5. Keep Kaggle running. After local work ends, explicitly enable **MANUAL SHUTDOWN**
+   in Cell 9, run it, then click Kaggle **Stop Session**.
 
-The pinned Ubuntu 22.04/SM75 engine artifact currently expires on **2026-10-10**;
-on expiry its artifact identity/checksums must be refreshed before a new session.
-Cloudflare Quick Tunnels have a documented SSE limitation. One historical live
-session passed streaming; verify your actual endpoint rather than assuming all
-Quick Tunnels will stream. See [the deployment and live evidence ledger](knowledgebase/V1_REAL_KAGGLE_ACCEPTANCE.md).
+Cached assets avoid repeated builds/downloads. Without them, the notebook tries a
+checksum-pinned historical build artifact, then the official pinned source if the
+artifact is unavailable. Integrity or device failures stop deployment. There is
+no claimed public binary release or guaranteed startup time. See
+[fast-start/build provenance](knowledgebase/KAGGLE_FAST_START.md).
+
+[Cloudflare documents that Quick Tunnels do not support SSE](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+One historical session streamed; test the actual endpoint from your PC. A ready
+marker or URL alone is not inference/streaming evidence. Use a supported private
+or named-tunnel route if your Quick Tunnel buffers the stream.
 
 ## Workers, models and configuration
 
@@ -122,7 +126,9 @@ defaults come from configuration, while `/resume` uses the task's recorded route
 llama.cpp supports the accepted text/tool protocol. Generic OpenAI-compatible
 workers use text-only capabilities unless `code_tools` is explicitly declared
 and that endpoint supports the tool protocol. ComfyUI is image-only and uses the
-existing fixed workflow; arbitrary checkpoint/timeout switching is unsupported.
+existing fixed Qwen image workflow; arbitrary checkpoint/timeout switching is unsupported.
+There is no current authenticated image deployment notebook. Use your own compatible
+ComfyUI gateway; the historical root image notebooks are not V1 setup instructions.
 Declared context and configured verification labels are not fresh measurements.
 
 ## CLI commands
@@ -130,14 +136,16 @@ Declared context and configured verification labels are not fresh measurements.
 | Command | Action |
 | --- | --- |
 | `/help` | Commands; `/help recovery` shows explicit reconciliation operations |
-| `/status` | Refresh health/GPU observations; label local timer/quota estimates |
+| `/status` | Fresh hardware/session observations with provenance; unknown values stay unknown |
 | `/connect <URL>` | Reconnect the selected text worker with its existing key; refresh health/models without saving the URL |
-| `/model [profile] [worker]` | Show/select the route for new tasks |
+| `/model [profile] [worker]` | Interactive text/code route selector for new tasks |
+| `/connect-image <URL>` | Reconnect the selected image worker independently |
+| `/image-model [profile] [worker]` | Interactive selector for configured image workflows |
 | `/models`, `/workers` | Configured profiles and worker observations/held capacity |
 | `/queue` | Durable queued/running/unknown requests |
 | `/sessions`, `/resume <id>` | Saved sessions and receipt-based recovery; unique ID prefixes work |
 | `/new` | New conversation on the next prompt |
-| `/skills` | Discovered local skills; registered skill slash commands also work |
+| `/skills`, `/skill [name] [request]` | Bundled/user/project skills and interactive selection |
 | `/diff`, `/undo` | Recorded diff and approved conflict-checked snapshot restoration |
 | `/cancel [task-id]` | Cancel queued work; use Ctrl+C during active synchronous inference |
 | `/clear`, `/exit` | Clear the terminal or leave the CLI |
@@ -147,6 +155,33 @@ Recovery commands include `/run-next`, `/actions`, `/reconcile`,
 `/reconcile-inference`, `/quota` and the legacy `/image-server`. The CLI is
 synchronous; queued work requires explicit `/run-next` or `/resume`, not a hidden
 background daemon. Unknown commands never become inference requests.
+
+Type `/` to open the command menu; `/mo` filters it immediately. Arrows navigate,
+Enter selects, Tab completes, Escape dismisses. Enter sends a prompt;
+**Alt+Enter** adds a line. History is kept in memory for this process. Help and
+completion use the same command registry, including custom skill commands.
+Supported terminals render streamed Markdown/code; redirected/dumb terminals use
+plain text. Activity follows Core events; model reasoning is not displayed.
+
+Bundled `/review`, `/research`, and `/leetcode` skills ship in the wheel.
+Put user manifests in `~/.freecompute/skills` or project manifests in `skills/`;
+project overrides user, which overrides bundled by name. `/skills` refreshes
+those manifests. Allowed tools can narrow authority but never bypass approvals.
+`search_web` and `fetch_url` execute locally through the ToolBroker, with actual
+activity/receipts; network availability or search blocking can make them fail.
+
+Text and image selection are independent. For a protected image gateway set
+`FREECOMPUTE_IMAGE_API_KEY` in `.env` (or its own `workers[].api_key_env`), then use
+`/connect-image URL`, `/image-model`, and `/image <prompt>`. Image reconnect reuses
+that image key; it never forwards the text key implicitly. Endpoint changes are
+in memory only. The existing Qwen GGUF workflow/nodes/files must exist on ComfyUI;
+selecting a declared identity does not install or hot-swap a checkpoint.
+
+`/status` shows GPU/CPU/RAM/disk and sample age when reported. Account session
+age/limit/remaining and weekly quota stay unknown unless supported data or an
+explicit setting exists. Supervisor/Linux/local connected ages are separate.
+Optional telemetry refreshes during interactive model waits and never grants
+capacity. See [telemetry sources and limits](knowledgebase/WORKER_TELEMETRY.md).
 
 ## Safety and limitations
 

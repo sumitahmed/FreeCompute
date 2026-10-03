@@ -1,6 +1,6 @@
 # FreeCompute V2 research and architecture
 
-**Current V1 product, 2026-10-03:** the final local CLI candidate is on
+**Current V1 product, 2026-10-04:** the final local CLI candidate is on
 `v1/cli-release` from accepted backend `755e944`. GUI is **DEFERRED / ABANDONED
 FOR V1**. Read [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md) and
 [V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md) for current behavior, tested
@@ -21,6 +21,8 @@ Read these in order:
 | [CUSTOM_DRIVER_QUALIFICATION.md](CUSTOM_DRIVER_QUALIFICATION.md) | Native proposal-only foundation and qualification results |
 | [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md) | Actual production boundaries, SQLite/recovery, CLI, tests, limitations |
 | [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md) | Minimal V1 engines, registry, CLI and current local acceptance evidence |
+| [WORKER_TELEMETRY.md](WORKER_TELEMETRY.md) | Current provider-neutral hardware/session observations |
+| [KAGGLE_FAST_START.md](KAGGLE_FAST_START.md) | Current notebook, private dataset integrity and shutdown steps |
 | [V1_SCHEDULER.md](V1_SCHEDULER.md) | Durable FIFO admission, resources, failure/restart semantics and phase inventory |
 | [FREECOMPUTE_V2_VISION.md](FREECOMPUTE_V2_VISION.md) | Product boundaries, recommended direction, unresolved choices |
 | [CURRENT_ARCHITECTURE_AUDIT.md](CURRENT_ARCHITECTURE_AUDIT.md) | Actual code, defects, evidence strength, components to preserve |

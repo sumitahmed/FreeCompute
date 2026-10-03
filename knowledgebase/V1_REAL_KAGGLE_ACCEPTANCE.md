@@ -1,3 +1,9 @@
+> **Current CLI/notebook setup (2026-10-04):** see [KAGGLE_FAST_START.md](KAGGLE_FAST_START.md)
+> and [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md). The deployment procedure and artifact
+> availability below describe the historical acceptance run. Current cells reuse
+> verified private datasets and have a pinned-source fallback. Account deadlines
+> are unknown unless supported evidence exists; see [WORKER_TELEMETRY.md](WORKER_TELEMETRY.md).
+
 # V1 real Kaggle acceptance
 
 This is the preserved live-acceptance ledger. The later CLI release pass does
@@ -129,7 +135,7 @@ Build run `37052624160`, repository commit `8e3cf74`, artifact `11247636682`:
   are fixed in cell 4. The artifact expires **2026-10-10 00:58 IST**; on expiry,
   rebuild off GPU and update the artifact identity/checksums before acceptance.
 
-## Manual procedure
+## Historical manual acceptance procedure
 
 For the requested Cloudflare URL route, before allocating GPU time:
 
