@@ -1,13 +1,15 @@
 # V1 engine and worker backend
 
-Real-worker preparation, 2026-10-02: use the feature branch's corrected
+Real-worker continuation, 2026-10-03: use the feature branch's corrected
 `kaggle/freecompute_dual_gpu_server.ipynb` and the exact manual procedure in
 [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Both server wrappers
-are synchronized; historical proof output is preserved. Preparation does not
-start a GPU session or certify streaming/model behavior. Real results remain
-unverified until the user returns an authorized endpoint. The subsequently
-requested Cloudflare URL option is available for startup checks; Quick Tunnels'
-SSE limitation does not qualify it for streaming acceptance.
+are synchronized; historical proof output is preserved. The user manually started
+the worker, and real CoreService inference, local read-tool round trips, queue/
+resource admission, context escalation to 9,714 measured input tokens and safe
+client-route reconnect have now passed. See the live ledger for exact scope and
+pending coding/cancellation cases. The Cloudflare endpoint passed SSE in this
+session despite the vendor's documented Quick Tunnel limitation; no universal
+transport support guarantee is inferred.
 
 2026-10-02. Authorized continuation from Stage 3 acceptance
 `aa15fc9fa87c45624acfc8eaf1aa5795f6603578` on
@@ -193,9 +195,13 @@ correction. Tests and logs are fixture acceptance, not a supported release matri
 are preserved unchanged from `aa15fc9`. No historical performance number was
 reproduced or promoted to current evidence.
 
-**Unverified:** actual GPU/model/tool-template/tokenizer/context/capacity/license,
-real tunnel behavior, performance and server cancellation acknowledgement. All
-worker/model names and GPU observations in deterministic tests are fixtures.
+**Historical validation boundary:** the deterministic acceptance above did not
+verify actual GPU/model/tool-template/tokenizer/context/capacity/license, real
+tunnel behavior, performance or cancellation acknowledgement. Its hardware names
+were fixtures. Today's real worker evidence is recorded separately in
+[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md); full 65,536-token
+capacity, exact tokenizer/template hashes, license review and remote cancellation
+acknowledgement remain unverified.
 
 Protocol references inspected on 2026-10-02: [llama.cpp server documentation](https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/server/README.md),
 [OpenAI chat reference](https://developers.openai.com/api/reference/resources/chat),
@@ -231,12 +237,14 @@ must be accurate and consistently named. Another workspace/core or external
 program is outside this SQLite resource authority. Approved commands remain
 trusted-host execution; existing sandbox/approval rules are not OS isolation.
 
-Before a real local/private/Kaggle acceptance test, provide an authorized endpoint
+The 2026-10-02 next gate was to provide an authorized endpoint
 and credentials, pin engine/model/weights/template/tokenizer/license identities,
 and declare physical resources and measured capacity. Then record health/auth
 negative cases, streaming/tool/long-context behavior, timeout/disconnect/cancel/
 reconnect, shared-pool contention, and actual TTFT/resource observations. No such
-session was required or started for this bounded backend milestone.
+session was required or started for that historical bounded backend milestone.
+The user subsequently authorized today's running-worker continuation. Its
+measured live cases now supersede the corresponding unverified statuses only.
 
 See [V1_SCHEDULER.md](V1_SCHEDULER.md) for exact queue/recovery rules and phase
 inventory. Advanced memory, delegation, automation, GUI, Rust, daemon/API server,

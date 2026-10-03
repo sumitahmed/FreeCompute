@@ -1,11 +1,27 @@
 # V1 durable inference queue and scheduler
 
-For the pending real dual-T4 acceptance, declare `kaggle-qwen` with concurrency 1
+For the live dual-T4 acceptance, `kaggle-qwen` has concurrency 1
 and exclusive `gpu0` + `gpu1` in pool `kaggle-dual-t4`. The notebook startup and
-private Tailscale procedure are in
+Cloudflare procedure and observed support limits are in
 [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Real queue/resource,
-stale-health, reconnect and cancellation behavior remains unverified; this
-preparation does not change scheduler semantics or release quarantined leases.
+real queue/resource and safe pre-dispatch reconnect cases have now passed. The
+cancellation case is pending. The live checks do not change scheduler semantics
+or release quarantined leases without explicit reconciliation.
+
+## Live observations — 2026-10-03
+
+During a real streamed inference, one active lease held both `gpu0` and `gpu1`.
+A second task stayed queued with zero inference attempts; direct scheduler
+admission returned `kaggle-qwen: capacity busy`. The first task completed, both
+claims were released, and `run_next()` completed the second task. The store then
+had no claims and idle allocation. This tests actual network inference with
+the same local Core/store, not independent workspaces or external programs.
+
+A disposable local forwarding listener was stopped before inference dispatch.
+Refresh marked the worker unreachable and the task stayed queued without an
+upstream POST. Restoring the route made the worker healthy and the queued task
+completed. This did not interrupt an active remote stream or restart Kaggle.
+Exact measurements and remaining cases are in the live acceptance ledger.
 
 2026-10-02. Authorized minimal backend continuation after Stage 3; no delegation,
 GUI, daemon, advanced scheduling, Redis or distributed coordination.
@@ -116,8 +132,10 @@ lease expiry, automatic worker discovery, GPU packing, scheduling priorities,
 fairness, Redis, leader election and a background daemon were rejected as
 unnecessary or unsafe for this milestone. They are not implemented features.
 
-**Unverified:** real GPU/model/profile/tool-template behavior, external process
-resource fencing, power-loss durability and cross-machine coordination.
+**Unverified:** full-context/tokenizer/profile conformance, external process
+resource fencing, power-loss durability and cross-machine coordination. Real
+text/read-tool inference and one-store both-GPU queuing now have live evidence;
+that does not promote every deterministic case to real-worker certification.
 **Historical:** Kaggle benchmarks and earlier Stage 1-3 acceptance remain dated
 evidence, not newly reproduced hardware results.
 

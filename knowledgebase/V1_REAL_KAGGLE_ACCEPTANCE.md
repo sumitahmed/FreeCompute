@@ -1,8 +1,11 @@
 # V1 real Kaggle acceptance
 
-2026-10-03. Preparation on `v2/safety-and-agentdriver-spike`, preserving backend
-checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. **Agent preparation has
-started no Kaggle GPU session, tunnel, remote health request or real inference.**
+2026-10-03. Live acceptance on `v2/safety-and-agentdriver-spike`, preserving backend
+checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. The user manually started
+the Kaggle worker. FreeCompute has now used that worker for real inference and
+local tool round trips. This continuation has not restarted Kaggle or changed
+its model, engine flags, context allocation, or transport. The earlier preparation
+consumed no GPU quota; that statement describes preparation, not today's live run.
 
 **Runtime correction:** the user's executable cell 4 reported Kaggle
 glibc **2.35**, while the official `b11206` CUDA archive requires **2.38**.
@@ -10,8 +13,9 @@ Cell 4 now downloads a CPU-built Ubuntu 22.04 / CUDA 12.4 / SM75 artifact of the
 same pinned commit with `GGML_CUDA_NO_VMM=ON`. Its build and version check passed in
 [GitHub Actions](https://github.com/sumitahmed/FreeCompute/actions/runs/37052624160).
 The cell checks the ZIP and tar SHA256 values before extraction, then verifies
-the commit and both T4 devices before model download. Actual Kaggle GPU execution
-of this replacement remains unverified until the user runs it.
+the commit and both T4 devices before model download. The user's worker now runs
+this replacement and has completed real streamed responses. Full weight,
+tokenizer/template and deployed binary hashes have not been independently fetched.
 
 ## Observed repository and historical profile
 
@@ -29,7 +33,7 @@ worker/profile declarations to exercise Kaggle identity and both-GPU resources;
 the old printed single-endpoint CLI command instead selects compatibility
 attachments. No remote component executes local tools.
 
-| Property | Requested profile, not freshly GPU verified |
+| Property | Configured profile; measurement limits below |
 | --- | --- |
 | Worker / profile | `kaggle-qwen` / `kaggle-qwen-historical-64k` |
 | Location / engine | Kaggle Free dual T4 / llama.cpp |
@@ -45,8 +49,8 @@ attachments. No remote component executes local tools.
 | Other flags | `--fit off --flash-attn auto --jinja --no-context-shift` |
 | Tokenizer/template | Embedded GGUF identities; no override; exact hashes unverified |
 | Pool / resources / concurrency | `kaggle-dual-t4` / `gpu0`, `gpu1` / 1 |
-| Auth / transport | Private bearer token / Cloudflare Quick Tunnel URL for startup checks; optional Tailscale Serve TCP for SSE |
-| GPU memory | Must be freshly observed in code cells 2, 6 and 8; no fresh number yet |
+| Auth / transport | Private bearer token / current Cloudflare Quick Tunnel; real SSE observed on this session, vendor support caveat below |
+| GPU memory | Context runs observed CUDA0 9,193 MiB and CUDA1 10,309 MiB used, each 15,360 MiB total |
 
 The historical handoff distinguishes the saved 32K proof notebook from the
 user-reported later 64K allocation and 46,722-token synthetic recall. Neither
@@ -76,9 +80,10 @@ failure; do not silently change context, weights, template or flags.
 - The user requested a Cloudflare URL as an alternative and does not want to use
   Tailscale for this run. The notebook now defaults to a Cloudflare Quick Tunnel;
   it requires only `FREECOMPUTE_API_KEY` in Kaggle Secrets. HTTP/2 does not
-  remove Cloudflare's documented Quick Tunnel SSE limitation. Startup and
-  authenticated health/model checks can proceed, but streaming and downstream
-  Core inference acceptance remain unverified or blocked on this route.
+  remove Cloudflare's documented Quick Tunnel SSE limitation. Nevertheless,
+  today's exact endpoint passed real SSE through CoreService, including a tool
+  round trip. Record this as observed behavior of this session, not a vendor
+  support guarantee or an inference that every Quick Tunnel supports SSE.
 - The userspace Tailscale node had only an outbound SOCKS proxy, no explicit
   inbound forwarding, and missing auth silently selected a public tunnel.
   Tailscale remains an explicit optional mode with Serve TCP forwarding and its
@@ -146,8 +151,9 @@ For the requested Cloudflare URL route, before allocating GPU time:
    Code cell 8 must print the manifest and `WORKER READY FOR LOCAL ACCEPTANCE`.
 6. Return the code cell 7 remote URL, code cell 8 manifest, and confirmation
    that the bearer token is in the local `.env`. Do not send the bearer token.
-   No manual local harness command is required yet. The Cloudflare URL permits
-   startup/health checks; its SSE limit blocks full streaming acceptance.
+   No manual local harness command is required yet. Verify streaming on the
+   actual returned endpoint. Today's session passed SSE; the vendor's documented
+   Quick Tunnel limitation still prevents treating that as universal support.
 7. Leave the interactive session running for the bounded checks. **Do not Run All, Save
    & Run All, rerun code cells 1-7, run inference probes, restart the kernel, or run
    code cell 9 while FreeCompute uses the worker.** After acceptance finishes, set
@@ -230,21 +236,76 @@ Notebook control paths use local fakes; they do not execute CUDA, download model
 weights, start a tunnel or launch an inference worker. The user selected the
 Cloudflare route; no local Tailscale installation is required for its startup checks.
 
-## Unverified real acceptance ledger
+## Historical pre-live acceptance ledger
 
-All real cases remain **Unverified — awaiting manual endpoint**: health/auth and
+Before the user supplied the endpoint, these cases were **Unverified**: health/auth and
 negative auth; model/profile/tokenizer/template visibility; stale/reconnected
 health; short and incremental streaming generation; tool and multi-turn local
 coding; progressively larger context; GPU memory; both-GPU admission/queue;
 timeout/disconnect/interrupted stream/restart recovery; cancellation and actual
 remote acknowledgement. No TTFT, token count, context pass or GUI-readiness claim
-is made at this stage.
+was made at that preparation stage. The live results below supersede only the
+specific cases actually exercised; older fixture and notebook evidence remains historical.
+
+## Live evidence — 2026-10-03
+
+Acceptance is in progress on the existing worker. Baseline authenticated health,
+both Tesla T4s, model discovery and a streamed `READY` through Stage 4 were already
+observed (~3.219 seconds first token). Those baseline generation checks were not
+repeated in this continuation. Private artifacts live outside the repository in
+a disposable Windows temporary directory; no URL or credential is committed.
+
+- **Local read / real tools:** completed in 18.531 seconds across two model turns.
+  The model proposed `read_file` for `probe.txt`; the local Core executed it and
+  returned a durable receipt. The model subsequently quoted its exact marker.
+  Server usage recorded 959 then 1,068 input tokens; both streams ended completely.
+- **Scheduler / both-GPU resources:** while a real 50-line inference was streaming,
+  a second submission remained queued with zero inference attempts. There was one
+  active lease and two exclusive claims (`gpu0`, `gpu1`). Direct admission returned
+  `capacity busy`. After completion, allocation became idle, `/run-next` completed
+  the second request, and claims were empty. Total case time: 97.735 seconds.
+- **Reconnect:** a disposable loopback forwarding route to the existing worker
+  was stopped before dispatch, making the worker unreachable. The task queued
+  without an upstream inference call. Restoring the same local listener made it
+  healthy and the queued task completed. Kaggle was not restarted. This verifies
+  loss/recovery of a client route before dispatch; it is not a mid-stream Cloudflare
+  outage or a remote process restart test.
+- **Context:** progressively tested the unchanged 65,536-capacity profile, with
+  beginning/middle/end sentinel recall successful at every dispatched size.
+
+| Case | User input UTF-8 bytes / characters | Actual server input tokens | Completion tokens | TTFT seconds | Wall seconds | Peak VRAM MiB, CUDA0 / CUDA1 | Outcome |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Short | 1,196 | 823 | 139 | 1.750 | 14.609 | 9,193 / 10,309 | Complete; three markers correct |
+| Medium | 16,196 | 3,085 | 176 | 8.719 | 24.953 | 9,193 / 10,309 | Complete; three markers correct |
+| Large | 60,196 | 9,714 | 113 | 30.328 | 41.203 | 9,193 / 10,309 | Complete; three markers correct |
+| Local boundary | 70,196 | Not dispatched | None | None | 1.281 | 9,193 / 10,309 | `context_overflow`; zero inference attempts |
+
+Actual token counts include the system prefix and chat framing; user bytes do
+not. Large-case serialized message bytes were 62,807, HTTP request body 62,966.
+The conservative local budget counted 62,806 input units plus 2,048 reserved
+completion units (64,854 of 65,536). The larger candidate counted 72,806 plus
+2,048 and was rejected. This UTF-8-byte estimate is intentionally not a verified
+tokenizer. No budget bypass was used to claim a full 65,536-token pass. No OOM,
+degraded health, or VRAM growth was observed in the three dispatched cases.
+
+**Discovered fix:** the client omitted `stream_options.include_usage`, leaving
+the earlier READY usage null. It now requests usage using the pinned engine's
+supported schema. A regression uses an empty-choices terminal usage chunk and
+checks actual counts reach the client. The live read and context cases confirmed
+the fix against the unchanged worker. The full local suite passed **206 tests
+in 29.063 seconds** after this change; the focused client and engine/CLI suites
+also passed (5 and 12 tests). Older package/install evidence above is historical;
+no new wheel was certified for this client change.
+
+The coding task has read its fixtures and is paused at a real local edit approval.
+Its multi-turn result and the cancellation/unknown-remote-outcome case remain
+pending. GUI readiness will be decided after those cases finish.
 
 ## Transport references inspected
 
 - [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
-  explicitly exclude SSE. This requested second route cannot complete the
-  streaming acceptance; record that result as blocked, not passed.
+  explicitly exclude SSE. This describes documented support. Today's observed
+  successful SSE cases are recorded separately; they do not change vendor policy.
 - [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
   documents private raw TCP forwarding. The retained 1.76.6 CLI implementation
   supports `serve --bg --tcp` and `up --auth-key=file:...`:
