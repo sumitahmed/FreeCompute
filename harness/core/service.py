@@ -13,6 +13,7 @@ from harness.core.prompt import PromptBuilder
 from harness.core.runtime_models import ModelProfile, Worker
 from harness.core.scheduler import QueueWaiting, Scheduler
 from harness.core.workers import WorkerRegistry
+from harness.core.views import CoreViews
 from harness.core.sessions import SessionManager, TERMINAL
 from harness.core.tool_broker import DurableToolBroker, OutcomeUnknown
 from harness.security import scrubber
@@ -71,6 +72,7 @@ class CoreService:
             self.scheduler = Scheduler(self.store, self.registry, self._publish)
             self.inference = InferenceBroker(self.store, self.registry, self.scheduler, self._publish, self.worker.worker_id)
             self.sessions = SessionManager(self.store, self._publish, self.scheduler.admit_submission)
+            self.views = CoreViews(self)
             self.current_session_id = None
             self.quota = self.session_tracker = self.image_provider = None
             self.image_profile_id = None
@@ -468,6 +470,14 @@ class CoreService:
 
     def list_sessions(self):
         return self.sessions.list_sessions()
+
+    def create_session(self, profile_id=None):
+        profile = self.registry.profile(profile_id or self.profile.profile_id)
+        if "text" not in profile.capabilities:
+            raise ValueError("A conversation requires a text-capable profile")
+        allowed = self.tools.tools if "code_tools" in profile.capabilities else {}
+        schemas = [self.tools.tools[name].to_openai_tool() for name in sorted(allowed)]
+        return self.sessions.create(profile, self.prompt_builder.build_system_content(), schemas)
 
     def new_session(self):
         self.current_session_id = None

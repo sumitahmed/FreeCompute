@@ -17,6 +17,20 @@ class SessionManager:
     def list_sessions(self):
         return self.store.all("SELECT id,status,profile_id,context_epoch,revision,current_task_id,created_at,updated_at FROM sessions ORDER BY updated_at DESC")
 
+    def _create(self, db, profile, system, schemas):
+        session_id = identity()
+        db.execute("""INSERT INTO sessions(id,workspace_id,version,revision,status,profile_id,context_epoch,
+            system_prefix,tool_prefix,history,created_at,updated_at) VALUES(?,?,1,0,'created',?,0,?,?,'[]',?,?)""",
+                   (session_id, self.store.workspace_id, profile.profile_id, scrubber.scrub(system), encode(schemas), timestamp(), timestamp()))
+        return session_id, self.store.event(db, session_id, None, "session.created", {"profile_id": profile.profile_id})
+
+    def create(self, profile, system, schemas):
+        """An empty persisted session; clients never assign its identity."""
+        with self.store.transaction() as db:
+            session_id, event = self._create(db, profile, system, schemas)
+        self.publish(event)
+        return session_id
+
     def submit(self, prompt, profile, system, schemas, allowed_tools, *, session_id=None, request_id=None,
                max_turns=15, selected_context=None, operation="task", requested_worker=None):
         if not isinstance(prompt, str) or not prompt.strip() or not isinstance(max_turns, int) or isinstance(max_turns, bool) or not 0 < max_turns <= 100:
@@ -46,11 +60,8 @@ class SessionManager:
                 if NativeState.recover(previous[0]).phase == "pending":
                     raise ValueError("Failed session has unresolved proposals; inspect its actions and start a new session with /new")
             if not session:
-                session_id = identity()
-                db.execute("""INSERT INTO sessions(id,workspace_id,version,revision,status,profile_id,context_epoch,
-                    system_prefix,tool_prefix,history,created_at,updated_at) VALUES(?,?,1,0,'created',?,0,?,?,'[]',?,?)""",
-                           (session_id, self.store.workspace_id, profile.profile_id, scrubber.scrub(system), encode(schemas), timestamp(), timestamp()))
-                emitted.append(self.store.event(db, session_id, None, "session.created", {"profile_id": profile.profile_id}))
+                session_id, event = self._create(db, profile, system, schemas)
+                emitted.append(event)
                 session = db.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
             elif session["profile_id"] != profile.profile_id or session["tool_prefix"] != encode(schemas):
                 db.execute("UPDATE sessions SET context_epoch=context_epoch+1,profile_id=?,tool_prefix=?,revision=revision+1 WHERE id=?",
