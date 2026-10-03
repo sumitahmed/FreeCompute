@@ -20,12 +20,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
-        if not self.authorized():
+        allowed = self.authorized()
+        self.server.probes.append({"path": self.path, "authenticated": allowed})
+        if not allowed:
+            return
+        if self.path == "/health" and self.server.health_http_status != 200:
+            self.send_response(self.server.health_http_status)
+            self.end_headers()
             return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        value = ({"data": [{"id": "fixture-code"}, {"id": "fixture-chat"}]} if self.path.endswith("models")
+        value = ({"data": [{"id": model} for model in self.server.models]} if self.path.endswith("models")
                  else {"status": self.server.health, "gpus": [], "source": "loopback fixture, no GPU"})
         self.wfile.write(json.dumps(value).encode())
 
@@ -92,6 +98,7 @@ def start_fixture(python=None):
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True
     server.requests, server.health, server.delay = [], "healthy", 0.015
+    server.probes, server.health_http_status, server.models = [], 200, ["fixture-code", "fixture-chat"]
     server.tool_python = python or sys.executable
     server.hold_stream = server.incomplete = False
     server.first_chunk, server.release, server.completed, server.connection_closed = (threading.Event() for _ in range(4))

@@ -188,8 +188,119 @@ class CliProductTests(unittest.TestCase):
         self.assertIn("No worker configured", out)
         self.assertIn("Status     unconfigured", out)
         self.cli(args=("--remote-url", "not-a-url"), configured=False, code=1)
-        out = self.cli(args=("--remote-url", "http://localhost:9000"), code=1)
+        out = self.cli(args=("--engine", "llama.cpp"), code=1)
         self.assertIn("single-worker flags", out.stderr)
+
+    def fresh_worker(self):
+        server, thread = fixture.start_fixture()
+        def close():
+            server.release.set()
+            server.shutdown()
+            server.server_close()
+            thread.join(3)
+        self.addCleanup(close)
+        return server, f"http://127.0.0.1:{server.server_port}"
+
+    def test_fresh_cli_url_overrides_stale_registry_url_with_dotenv_key(self):
+        self.server.health_http_status = 530
+        fresh, url = self.fresh_worker()
+        saved = self.config.read_bytes()
+        out = self.cli(args=("--remote-url", url))
+        self.assertIn("healthy (observed at startup)", out.stdout)
+        self.assertEqual(self.server.probes, [])
+        self.assertIn({"path": "/health", "authenticated": True}, fresh.probes)
+        self.assertEqual(self.config.read_bytes(), saved)
+        self.assertEqual(fresh.requests, [])
+
+    def test_url_override_targets_flag_selected_compatible_worker(self):
+        fresh, url = self.fresh_worker()
+        out = self.cli(args=("--profile", "chat", "--worker", "fixture-chat-worker", "--remote-url", url + "/v1"))
+        self.assertIn("fixture-chat", out.stdout)
+        self.assertIn("healthy (observed at startup)", out.stdout)
+        self.assertIn({"path": "/v1/models", "authenticated": True}, fresh.probes)
+        self.assertEqual(self.server.probes, [])
+
+    def test_connect_replaces_expired_endpoint_and_continues_in_same_cli(self):
+        self.server.health_http_status = 530
+        fresh, url = self.fresh_worker()
+        saved = self.config.read_bytes()
+        out = self.cli("/connect " + url + "\n/status\n/workers\n/models\n/model\nstream only\n/exit\n")
+        self.assertIn("saved tunnel URL may have expired", out.stdout)
+        self.assertIn("Connected: fixture-code-worker", out.stdout)
+        self.assertIn("Advertised models: fixture-code, fixture-chat", out.stdout)
+        self.assertIn("Endpoint changed for this run only", out.stdout)
+        self.assertIn("STREAM_LAST", out.stdout)
+        self.assertEqual(len(fresh.requests), 1)
+        self.assertEqual(self.server.requests, [])
+        self.assertIn({"path": "/health", "authenticated": True}, fresh.probes)
+        self.assertIn({"path": "/v1/models", "authenticated": True}, fresh.probes)
+        self.assertEqual(self.config.read_bytes(), saved)
+        with contextlib.closing(self.db()) as db:
+            self.assertNotIn(url, str(db.execute("SELECT declaration FROM workers").fetchall()))
+
+    def test_expired_startup_is_nonfatal_and_help_still_works(self):
+        self.server.health_http_status = 530
+        out = self.cli("/help\n/sessions\n/exit\n")
+        self.assertIn("unreachable (observed at startup)", out.stdout)
+        self.assertIn("CLI remains usable", out.stdout)
+        self.assertIn("/connect <URL>", out.stdout)
+        self.assertEqual(self.server.requests, [])
+
+    def test_connect_invalid_urls_fail_cleanly_and_keep_existing_endpoint(self):
+        out = self.cli("/connect not-a-url\n/connect http://localhost:bad\n/connect\n/model\nstream only\n/exit\n")
+        self.assertIn("Worker endpoint must be HTTP(S)", out.stderr)
+        self.assertIn("invalid port", out.stderr)
+        self.assertIn("Usage: /connect", out.stderr)
+        self.assertIn("STREAM_LAST", out.stdout)
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_connect_wrong_key_reports_authentication_and_never_prints_key(self):
+        fresh, url = self.fresh_worker()
+        wrong = "SYNTHETIC_WRONG_RECONNECT_KEY"
+        self.environment["FC_FIXTURE_KEY"] = wrong
+        out = self.cli("/connect " + url + "\n/help\n/exit\n")
+        self.assertIn("Authentication failed", out.stderr)
+        self.assertNotIn(wrong, out.stdout + out.stderr)
+        self.assertNotIn("Connected:", out.stdout)
+        self.assertIn({"path": "/health", "authenticated": False}, fresh.probes)
+        self.assertEqual(fresh.requests, [])
+
+    def test_connect_and_resume_preserve_completed_receipts_without_replay(self):
+        self.cli("fix calculator\ny\ny\n/exit\n")
+        with contextlib.closing(self.db()) as db:
+            sid = db.execute("SELECT id FROM sessions ORDER BY rowid LIMIT 1").fetchone()[0]
+            receipts = db.execute("SELECT id,state,result FROM actions ORDER BY rowid").fetchall()
+        fresh, url = self.fresh_worker()
+        count = len(self.server.requests)
+        out = self.cli("/connect " + url + "\n/resume " + sid + "\n/queue\n/exit\n")
+        self.assertIn("Recorded task outcome: completed", out.stdout)
+        self.assertEqual(len(self.server.requests), count)
+        self.assertEqual(fresh.requests, [])
+        self.assertEqual((self.workspace / "test-run-count.txt").read_text(), "1")
+        self.assertIn("return a / b", (self.workspace / "calculator.py").read_text())
+        with contextlib.closing(self.db()) as db:
+            self.assertEqual(db.execute("SELECT id,state,result FROM actions ORDER BY rowid").fetchall(), receipts)
+
+    def test_connect_keeps_unknown_lease_fenced_and_does_not_resubmit(self):
+        self.server.incomplete = True
+        self.cli("", args=("--prompt", "stream only"), code=1)
+        fresh, url = self.fresh_worker()
+        out = self.cli("/connect " + url + "\n/queue\n/help\n/exit\n")
+        self.assertIn("Resolve worker leases", out.stderr)
+        self.assertEqual(len(self.server.requests), 1)
+        self.assertEqual(fresh.requests, [])
+        self.assertEqual(fresh.probes, [])
+        with contextlib.closing(self.db()) as db:
+            self.assertEqual(db.execute("SELECT state FROM inference_leases").fetchone()[0], "quarantined")
+
+    def test_connect_legacy_route_reuses_freecompute_key_without_registry(self):
+        fresh, url = self.fresh_worker()
+        self.environment.update(FREECOMPUTE_API_KEY=fixture.TOKEN, FREECOMPUTE_MODEL_ALIAS="fixture-code")
+        out = self.cli("/connect " + url + "\nstream only\n/exit\n", configured=False)
+        self.assertIn("Connected: supervisor-text", out.stdout)
+        self.assertIn("STREAM_LAST", out.stdout)
+        self.assertEqual(len(fresh.requests), 1)
+        self.assertTrue(all(p["authenticated"] for p in fresh.probes))
 
     def test_eof_denies_effects_and_resume_prefix_reuses_completed_receipts(self):
         out = self.cli("fix calculator\n").stdout

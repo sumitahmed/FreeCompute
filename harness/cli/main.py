@@ -386,7 +386,10 @@ def _main():
                         ("workspace_root", args.workspace), ("engine", args.engine), ("selected_profile", args.profile), ("selected_worker", args.worker)):
         if value: setattr(config, name, value)
     if args.remote_url:
-        config.override_remote_url(args.remote_url)
+        try:
+            config.override_remote_url(args.remote_url)
+        except ValueError as exc:
+            raise ValueError("Configuration error: " + str(exc)) from None
     for value in (config.api_key, config.remote_url, config.image_server_url): scrubber.register_secret(value)
     workspace = Path(config.workspace_root).resolve()
     if not workspace.is_dir():
