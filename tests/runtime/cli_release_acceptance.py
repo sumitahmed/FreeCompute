@@ -118,9 +118,10 @@ def main():
         out = cli("wrong key", use_env=wrong_env)
         assert "Authentication failed" in out and not server.requests
         record("wrong key is actionable; no inference dispatch")
-        out = cli("commands and model selection", "/help\n/help recovery\n/status\n/workers\n/models\n/model chat fixture-chat-worker\n/model code fixture-code-worker\n/skills\n/new\n/sessions\n/cancel\n/image\n/image-server\n/clear\n/typo\n/exit\n")
+        out = cli("commands and model selection", "/help\n/help recovery\n/status\n/workers\n/models\n/model chat fixture-chat-worker\n/model code fixture-code-worker\n/skills\n/new\n/sessions\n/run-next\n/cancel\n/image\n/image-server\n/clear\n/typo\n/exit\n")
         assert "Profile   chat" in out and "Profile   code" in out and "Unknown command" in out
         assert "No active task to cancel" in out and not server.requests
+        assert "No queued task currently has an eligible free worker" in out and "Recorded task outcome" not in out
         record("slash commands, explicit model/worker selection and safe unknown command")
 
         out = cli("read edit test", "fix calculator\ny\ny\n/diff\n/exit\n")

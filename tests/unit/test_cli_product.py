@@ -177,6 +177,12 @@ class CliProductTests(unittest.TestCase):
         self.assertIn("/reconcile-inference", out.stdout)
         self.assertEqual(self.server.requests, [])
 
+    def test_empty_queue_does_not_claim_a_recorded_task_receipt(self):
+        out = self.cli("/run-next\n/exit\n").stdout
+        self.assertNotIn("Recorded task outcome", out)
+        self.assertIn("No queued task currently has an eligible free worker", out)
+        self.assertEqual(self.server.requests, [])
+
     def test_no_config_guidance_invalid_url_and_ignored_registry_flags(self):
         out = self.cli(configured=False).stdout
         self.assertIn("No worker configured", out)

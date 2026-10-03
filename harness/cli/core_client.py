@@ -51,7 +51,9 @@ class CoreClient:
         try:
             result = operation()
             if not observed_terminal and callbacks.get("on_phase_change"):
-                callbacks["on_phase_change"](result["status"], "Recorded task outcome: " + result["status"])
+                detail = ("Recorded task outcome: " + result["status"] if result.get("task_id")
+                          else result.get("detail") or "Task " + result["status"])
+                callbacks["on_phase_change"](result["status"], detail)
                 if result["final_answer"] and callbacks.get("on_token"):
                     callbacks["on_token"](result["final_answer"])
             result['allocation'] = self._core.inference.allocation()
