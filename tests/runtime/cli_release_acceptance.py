@@ -54,7 +54,7 @@ def main():
             raise RuntimeError("Package setup failed: " + process.stderr[-2000:])
         return process
 
-    print("Building a source snapshot outside the repository…", flush=True)
+    print("Building a source snapshot outside the repository...", flush=True)
     setup_run([sys.executable, "-m", "pip", "wheel", "--quiet", "--disable-pip-version-check", "--no-deps", "--no-cache-dir", "--wheel-dir", str(root / "wheels"), str(source)])
     wheel = next((root / "wheels").glob("freecompute-*.whl"))
     with zipfile.ZipFile(wheel) as bundle:
@@ -68,7 +68,7 @@ def main():
         assert "harness/config.sample.yaml" in names
     record("wheel inventory and byte comparison", python_files=len(shipped), wheel=wheel.name,
            sha256=hashlib.sha256(wheel.read_bytes()).hexdigest())
-    print("Installing into a clean virtual environment…", flush=True)
+    print("Installing into a clean virtual environment...", flush=True)
     venv.EnvBuilder(with_pip=True).create(environment)
     scripts = environment / ("Scripts" if os.name == "nt" else "bin")
     python = scripts / ("python.exe" if os.name == "nt" else "python")

@@ -1,5 +1,12 @@
 # Production local runtime fixtures
 
+The final CLI release check is `python tests/runtime/cli_release_acceptance.py`.
+It builds from an external source snapshot, installs in a clean venv and runs
+the installed entrypoint without source `PYTHONPATH`. Its explicit loopback
+fixture is in `cli_fixture.py`; it is not packaged or a default inference mode.
+The final pass observed 228 unit tests and 16 wheel acceptance checks; current
+details/manual limits are in `knowledgebase/V1_RELEASE_READINESS.md`.
+
 Run the complete existing and new unit suite from the repository root:
 
 ```powershell

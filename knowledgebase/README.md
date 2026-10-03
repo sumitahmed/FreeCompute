@@ -1,5 +1,12 @@
 # FreeCompute V2 research and architecture
 
+**Current V1 product, 2026-10-03:** the final local CLI candidate is on
+`v1/cli-release` from accepted backend `755e944`. GUI is **DEFERRED / ABANDONED
+FOR V1**. Read [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md) and
+[V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md) for current behavior, tested
+evidence and the user's manual release gate. The research status below is
+historical; no push/merge/deployment is authorized by the final CLI pass.
+
 Research date: **2026-10-02**. Audited baseline: `main`, `ea6d39a44d40e50f2ffebc84c0fce83a198ba24b`.
 
 **Current status:** Stage 1 safety repairs and the **REJECTED** pinned OpenHands experiment are preserved. The qualified native driver and accepted Stage 3 runtime are the baseline for the subsequently authorized minimal V1 engine/worker registry and durable queue/scheduler. That bounded backend passed **189 unit + 15 SDK + 28 foundation tests** and fresh installed-wheel acceptance (50 source/install files matched). Evidence and limits are recorded below. This milestone stops for branch review. Delegation, advanced scheduling, GUI, daemon and real GPU/deployment work remain proposed.

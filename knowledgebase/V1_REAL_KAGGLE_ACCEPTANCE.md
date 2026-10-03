@@ -1,5 +1,10 @@
 # V1 real Kaggle acceptance
 
+This is the preserved live-acceptance ledger. The later CLI release pass does
+not claim new GPU evidence; its product/readiness records are
+[V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md) and [V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md).
+The prior GUI handoff decision is superseded: GUI is **DEFERRED / ABANDONED FOR V1**.
+
 2026-10-03. Live acceptance completed on `v2/safety-and-agentdriver-spike`, preserving backend
 checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. The user manually started
 the Kaggle worker. FreeCompute has now used that worker for real inference and
