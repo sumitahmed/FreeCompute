@@ -214,7 +214,7 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
                 "status": "healthy" if llama_ok else "degraded",
                 "supervisorUptimeSeconds": round(time.time() - config.start_time, 1),
                 "sessionAgeSeconds": None,
-                "sessionAgeSource": "unknown; supervisor uptime is not account session age",
+                "sessionAgeSource": "supervisor_start_estimate",  # Legacy label; normalized account age stays unknown.
                 "linuxUptimeSeconds": get_container_uptime_seconds(),
                 "maxSessionSeconds": None,
                 "secondsRemainingIn12hSession": None,

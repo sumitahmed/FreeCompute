@@ -76,7 +76,6 @@ class MenuTests(unittest.TestCase):
                 while not reader.session.app.is_running and time.time() < deadline:
                     time.sleep(.01)
                 time.sleep(.1)  # Win32 prompt initializes/reset its buffer after run begins.
-                pipe.send_text('/mo')
                 while time.time() < deadline:
                     state = reader.session.default_buffer.complete_state
                     if state and len(state.completions) == 2:
@@ -93,7 +92,8 @@ class MenuTests(unittest.TestCase):
                 pipe.send_text('\r')
             thread = threading.Thread(target=drive, daemon=True)
             thread.start()
-            answer = reader.read()
+            answer = reader.session.prompt('freecompute> ', default='/mo',
+                pre_run=lambda: reader.session.default_buffer.start_completion(select_first=False))
             thread.join(3)
         self.assertEqual(observed.get('menu'), ['/model', '/models'], observed)
         self.assertEqual(observed['selected'], '/model')
