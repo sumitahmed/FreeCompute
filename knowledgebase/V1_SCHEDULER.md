@@ -3,8 +3,8 @@
 For the live dual-T4 acceptance, `kaggle-qwen` has concurrency 1
 and exclusive `gpu0` + `gpu1` in pool `kaggle-dual-t4`. The notebook startup and
 Cloudflare procedure and observed support limits are in
-[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Real queue/resource,
-real queue/resource and safe pre-dispatch reconnect cases have now passed. The
+[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Real queue/resource
+and safe pre-dispatch reconnect cases have now passed. The
 cancellation case is pending. The live checks do not change scheduler semantics
 or release quarantined leases without explicit reconciliation.
 
