@@ -10,9 +10,10 @@ from harness.security import scrubber
 from harness.storage.runtime import fingerprint
 
 
-def require_remote_auth(url, key):
+def require_remote_auth(url, key, modality="text"):
     if not key and urlsplit(url).hostname not in {"localhost", "127.0.0.1", "::1"}:
-        raise ValueError("Remote text workers require a bearer key; set FREECOMPUTE_API_KEY or the worker's api_key_env")
+        name = "FREECOMPUTE_IMAGE_API_KEY" if modality == "image" else "FREECOMPUTE_API_KEY"
+        raise ValueError(f"Remote {modality} workers require a bearer key; set {name} or the worker's api_key_env")
 
 
 def configured_engines(config, workspace):
@@ -36,8 +37,7 @@ def configured_engines(config, workspace):
             raise ValueError(f"Worker {connection.worker_id} API-key variable {connection.api_key_env} is unset; put it in .env or the process environment")
         scrubber.register_secret(key)
         scrubber.register_secret(connection.url)
-        if connection.engine != "ComfyUI":
-            require_remote_auth(connection.url, key)
+        require_remote_auth(connection.url, key, "image" if connection.engine == "ComfyUI" else "text")
         if connection.engine == "llama.cpp":
             adapter = LlamaCppEngine(LlamaCppProvider(connection.url, key, models[0].model, connection.timeout_seconds or config.request_timeout_seconds).client)
         elif connection.engine == "openai-compatible":
@@ -66,6 +66,8 @@ def configured_engines(config, workspace):
         attachments.append((worker, [profile], adapter))
         # Unknown physical placement retains Stage 3's conservative shared slot.
         image = ModelProfile("comfy-image", "comfy-worker", "ComfyUI-default", "ComfyUI", frozenset({"image_gen"}))
+        if config.image_server_url:
+            require_remote_auth(config.image_server_url, config.image_api_key, "image")
         profiles[image.profile_id] = image
         attachments.append((Worker("comfy-worker", "remote-supervisor", "ComfyUI", image.capabilities,
                                    resource_pool="attached-default", resources=frozenset({"inference"})),

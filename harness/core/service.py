@@ -499,6 +499,8 @@ class CoreService:
             raise ValueError("Resolve the active/uncertain allocation before changing the image endpoint")
         scrubber.register_secret(value)
         key = getattr(self.image_provider, "api_key", self.image_api_key)
+        from harness.core.engine_config import require_remote_auth
+        require_remote_auth(value, key, "image")
         provider = ComfyUIProvider(value, workspace_root=str(self.store.workspace), api_key=key)
         if self.image_profile_id:
             row = self.registry.candidates(self.image_profile_id, self.image_worker_id)[0]

@@ -3,6 +3,7 @@ harness/providers/comfyui.py — Provider implementation for ComfyUI image gener
 """
 
 import json
+import math
 import os
 import random
 import time
@@ -76,9 +77,10 @@ class ComfyUIProvider(BaseProvider):
                     if not isinstance(d, dict):
                         continue
                     total, free = d.get('vram_total'), d.get('vram_free')
-                    valid = all(isinstance(v, (int, float)) and not isinstance(v, bool) and __import__('math').isfinite(v) and v >= 0 for v in (total, free))
-                    vram_total = total / (1024 * 1024) if valid else None
-                    vram_used = max(0, total - free) / (1024 * 1024) if valid else None
+                    valid_total = isinstance(total, (int, float)) and not isinstance(total, bool) and math.isfinite(total) and total >= 0
+                    valid_free = isinstance(free, (int, float)) and not isinstance(free, bool) and math.isfinite(free) and free >= 0
+                    vram_total = total / (1024 * 1024) if valid_total else None
+                    vram_used = (total - free) / (1024 * 1024) if valid_total and valid_free and free <= total else None
                     gpus.append(GpuTelemetry(
                         index=d.get("index", 0),
                         name=scrubber.scrub(d.get("name", "unknown")),
@@ -94,8 +96,8 @@ class ComfyUIProvider(BaseProvider):
                 if isinstance(system, dict):
                     total, free = system.get('ram_total'), system.get('ram_free')
                     telemetry.metrics['ram_total_bytes'] = metric(total, 'provider-reported', 'ComfyUI /system_stats', name='ram_total_bytes')
-                    if isinstance(total, (int, float)) and isinstance(free, (int, float)):
-                        telemetry.metrics['ram_used_bytes'] = metric(max(0, total - free), 'provider-reported', 'ComfyUI total minus free', name='ram_used_bytes')
+                    if all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0 for v in (total, free)) and free <= total:
+                        telemetry.metrics['ram_used_bytes'] = metric(total - free, 'provider-reported', 'ComfyUI total minus free', name='ram_used_bytes')
                 telemetry.gpus = [{name: metric(value, 'provider-reported', 'ComfyUI /system_stats', name=name) for name, value in (
                     ('name', gpu.name), ('vram_used_mib', gpu.vram_used_mib), ('vram_total_mib', gpu.vram_total_mib), ('temperature_c', None), ('utilization_pct', None))} for gpu in gpus]
                 if gpus:
