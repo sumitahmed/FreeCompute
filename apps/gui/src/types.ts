@@ -21,7 +21,7 @@ export interface Approval {
 export interface Snapshot { session: Session; tasks: Task[]; approvals: Approval[]; cursor: number }
 export interface Worker {
   worker_id: string; location: string; engine: string; capabilities: string[]; health: string; attached: boolean;
-  profiles: string[]; last_seen: string | null; observed_resources: Payload; active_or_quarantined: number; concurrency_limit: number
+  profiles: string[]; last_seen: string | null; observed_at: string | null; observed_resources: Payload; active_or_quarantined: number; concurrency_limit: number
 }
 export interface Profile {
   profile_id: string; model: string; engine: string; capabilities: string[]; workers: string[];

@@ -1,4 +1,3 @@
-@import url();
 :root { color-scheme: dark; --bg: #151719; --panel: #1b1e21; --panel-alt: #202428; --border: #32383e; --text: #e8ebed; --muted: #9ba5af; --accent: #8fceb2; --accent-bg: #183b2b; --warning: #e8c88a; --warning-bg: #2b261c; --danger: #ef9c9c; --danger-bg: #322125; --code: #121517; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 1.5; background: var(--bg); color: var(--text); }
 :root[data-theme='light'] { color-scheme: light; --bg: #fafbf9; --panel: #f1f3f1; --panel-alt: #e8ede9; --border: #d2d9d3; --text: #202b25; --muted: #59685e; --accent: #215e40; --accent-bg: #deede3; --warning: #826014; --warning-bg: #fbf3df; --danger: #9b3838; --danger-bg: #faeaea; --code: #eef2ee; }
 * { box-sizing: border-box; }

@@ -1,5 +1,6 @@
 """Read-only public projections shared by clients. No agent or scheduling policy."""
 import difflib
+from datetime import datetime, timezone
 import json
 
 from harness.security import scrubber
@@ -64,8 +65,16 @@ class CoreViews:
             if row["tool"] == "edit_file" and not row["diff"]:
                 # Exact replacement preview only. Core checks the complete target hash.
                 row["diff"] = "".join(difflib.unified_diff(
-                    preview.get("old_str", "").splitlines(keepends=True), preview.get("new_str", "").splitlines(keepends=True),
+                    [line + "\n" for line in preview.get("old_str", "").splitlines()],
+                    [line + "\n" for line in preview.get("new_str", "").splitlines()],
                     fromfile="a/" + preview.get("path", "file"), tofile="b/" + preview.get("path", "file")))
+        return scrubber.structured(rows)
+
+    def workers(self):
+        rows = self.core.list_workers()
+        for row in rows:
+            checked = self.store.one("SELECT checked_at FROM workers WHERE id=?", (row["worker_id"],))["checked_at"]
+            row["observed_at"] = datetime.fromtimestamp(checked, timezone.utc).isoformat() if checked is not None else None
         return scrubber.structured(rows)
 
     def queue(self):

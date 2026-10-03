@@ -256,7 +256,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == PREFIX + "/tasks":
             value = views.tasks(query.get("session_id", [None])[0])
         elif path == PREFIX + "/workers":
-            value = core.list_workers()
+            value = views.workers()
         elif path == PREFIX + "/profiles":
             value = core.list_models()
         elif path == PREFIX + "/queue":
@@ -308,7 +308,8 @@ class Handler(BaseHTTPRequestHandler):
             value = {"profile_id": core.profile.profile_id, "worker_id": core.selected_worker}
         elif path == PREFIX + "/workers/refresh":
             self._body(set())
-            value = core.list_workers(refresh=True)
+            core.list_workers(refresh=True)
+            value = core.views.workers()
             runtime.wake()
         elif path in {PREFIX + "/reconcile/inference", PREFIX + "/reconcile/action"}:
             inference = path.endswith("inference")

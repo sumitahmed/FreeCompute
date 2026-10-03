@@ -29,7 +29,7 @@ export function useCore(client: APIClient, unauthorized: () => void) {
   const handleError = useCallback((error: unknown) => {
     if (!mounted.current || (error instanceof DOMException && error.name === 'AbortError')) return
     if (error instanceof APIError && error.status === 401) unauthorized()
-    setError(error instanceof Error ? error.message : 'Local API command was not confirmed')
+    setError(error instanceof TypeError ? 'Local Core is unreachable. Reconnect before retrying; running work may continue.' : error instanceof Error ? error.message : 'Local API command was not confirmed')
   }, [unauthorized])
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const sid = current.current
@@ -42,7 +42,7 @@ export function useCore(client: APIClient, unauthorized: () => void) {
       ])
       if (!mounted.current || signal?.aborted) return
       setStatus(status); setSessions(sessions); setWorkers(workers); setProfiles(profiles); setQueue(queue); setActions(actions); setConnected(true)
-      if (sid === current.current && snapshot) setSnapshot(snapshot)
+      if (sid === current.current && snapshot) setSnapshot(previous => previous?.session.id === snapshot.session.id && previous.session.revision > snapshot.session.revision ? previous : snapshot)
       if (!initialized.current) {
         initialized.current = true
         const saved = localStorage.getItem('fc.session.' + client.base)

@@ -25,7 +25,7 @@ export function ApprovalCard({ approval, deciding, onDecision }: { approval: App
 }
 
 export function Diff({ value }: { value: string }) {
-  return <pre className="diff" aria-label="Change preview">{value.split('\n').map((line, i) => <span key={i} className={line.startsWith('+') ? 'addition' : line.startsWith('-') ? 'deletion' : line.startsWith('@@') ? 'hunk' : ''}>{line}{'\n'}</span>)}</pre>
+  return <pre className="diff" aria-label="Change preview">{value.split('\n').map((line, i) => <span key={i} className={line.startsWith('+') ? 'addition' : line.startsWith('-') ? 'deletion' : line.startsWith('@@') ? 'hunk' : ''}>{line || '\u00a0'}</span>)}</pre>
 }
 
 interface ModelItem { kind: 'model'; key: string; content: string; reasoning: string; finished: boolean }
@@ -128,7 +128,7 @@ export function WorkerInfo({ worker }: { worker: Worker | undefined }) {
   const gpus = Array.isArray(raw) ? raw : []
   return <><div className="section-line"><strong>{worker.worker_id}</strong><Badge state={worker.health === 'unhealthy' || worker.health === 'unreachable' ? 'degraded' : worker.health === 'unverified' || worker.health === 'unconfigured' ? 'unknown' : worker.health} /></div>
     <dl><dt>Location</dt><dd>{worker.location}</dd><dt>Engine</dt><dd>{worker.engine}</dd><dt>Capabilities</dt><dd>{worker.capabilities.join(', ')}</dd>
-      <dt>Held slots</dt><dd>{worker.active_or_quarantined} / {worker.concurrency_limit} declared</dd><dt>Last healthy</dt><dd>{worker.last_seen ? new Date(worker.last_seen).toLocaleString() : 'Unknown'}</dd></dl>
+      <dt>Held slots</dt><dd>{worker.active_or_quarantined} / {worker.concurrency_limit} declared</dd><dt>Observation</dt><dd>{worker.observed_at ? new Date(worker.observed_at).toLocaleString() : 'Unknown'}</dd><dt>Last healthy</dt><dd>{worker.last_seen ? new Date(worker.last_seen).toLocaleString() : 'Unknown'}</dd></dl>
     {gpus.map((gpu, i) => { const row = gpu as Payload; return <p className="gpu" key={i}>{text(row.name)} · {text(row.vram_used_mib ?? row.vramUsedMiB)} / {text(row.vram_total_mib ?? row.vramTotalMiB)} MiB observed</p> })}
     {!!worker.observed_resources.error && <p className="task-notice">{text(worker.observed_resources.error)}</p>}
     <p className="muted small">Capacity follows declared leases. VRAM observations do not grant a slot.</p>
