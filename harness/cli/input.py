@@ -79,6 +79,8 @@ class TerminalInput:
                                          complete_while_typing=True, reserve_space_for_menu=8,
                                          key_bindings=bindings(), multiline=True,
                                          style=Style.from_dict({"prompt": "bold ansicyan"}))
+            self.session.app.ttimeoutlen = .05
+            self.session.app.timeoutlen = .15
 
     def read(self):
         if not self.session:
