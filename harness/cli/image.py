@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """
-================================================================================
-KAGGLE x QWEN-IMAGE-2.1 UNCENSORED — INTERACTIVE STANDALONE REPL CLI
-================================================================================
-Provides the full coding-agent-style terminal experience for image generation:
-- Interactive prompt loop: 'qwen-image> '
-- Slash commands: /status, /settings, /server, /history, /help, /clear, exit
-- Live execution timeline & progress bar on Kaggle Dual T4 GPUs
-- Automatic local download and image viewer launch on Windows
-- Auto-prompts for new Kaggle Cloudflare URL if previous session expired
+Historical standalone image prototype, retained for compatibility/security tests.
+The supported entrypoint delegates to the V1 Core, whose scheduler, credentials,
+artifact receipts and local authority own the image workflow. The old prototype
+classes below are not used by the product CLI; this is not a live GPU validation.
 """
 
 import sys
@@ -591,4 +586,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from harness.cli.main import main as core_main
+    sys.argv.insert(1, "image")
+    raise SystemExit(core_main())

@@ -25,6 +25,10 @@ config.yaml
 .relayforge.yaml
 .image_server_url
 /apps/gui/
+.archify/
+# Superseded notebook generators; maintained notebook cells are canonical.
+/build_dataset_nb.py
+/build_universal_nb.py
 *.pem
 *.key
 

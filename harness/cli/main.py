@@ -116,9 +116,18 @@ def _startup(config, client, fmt):
     if _has_worker(config):
         health = client.get_health()
         summary["status"] = health.status
+        from harness.telemetry.models import normalize
+        telemetry = normalize(health.raw)
+        names = [str(g['name']['value']) for g in telemetry.gpus if g['name']['value']]
+        summary['compute'] = f"{telemetry.metrics['provider']['value'] or 'unknown provider'} | " + (', '.join(names) + ' (observed)' if names else 'hardware unknown')
         if health.raw.get("error"):
             _connection_problem(health.raw["error"], info["selected_worker"] or "selected worker", fmt)
     summary["worker"] = info["selected_worker"] or "any eligible: " + ", ".join(w["worker_id"] for w in info["eligible_workers"])
+    image = client.image_model_info()
+    if image and client.server_url:
+        rows = client._core.list_workers()
+        row = next((w for w in rows if w['worker_id'] == image['selected_worker']), {})
+        summary['image'] = image['model'] + " | " + row.get('location', 'unknown') + " | " + row.get('health', 'unverified')
     fmt.print_banner(config.remote_url, info["model"], str(Path(config.workspace_root).resolve()), summary)
     if not _has_worker(config):
         _setup_guidance()
@@ -128,6 +137,8 @@ def print_status_telemetry(client, session_tracker, quota_ledger, fmt):
     """Only health payload values are observations; timers/quota remain estimates."""
     try:
         health = client.get_health()
+        info = client.model_info()
+        print(f"Worker {info['selected_worker'] or 'any eligible'} | model {info['model']} (configured) | engine {info['engine']}")
         print(f"Worker status: {fmt.green(health.status) if health.status == 'healthy' else fmt.yellow(health.status)} (observed now)")
         if health.raw.get("error"):
             _connection_problem(health.raw["error"], client.model_info()["selected_worker"] or "selected worker", fmt)
@@ -139,7 +150,7 @@ def print_status_telemetry(client, session_tracker, quota_ledger, fmt):
             print("Weekly quota: unknown; account dashboard is not queried.")
         else:
             print(f"Weekly quota: {quota['last_observed_hours']}h (user-provided, as of {quota['observed_as_of']}; may be stale)")
-        print(f"Local task wall time this run: {quota['session_consumed_hours']}h (estimated; separate from provider billing)")
+        print(f"Logged local task wall time: {quota['local_task_wall_time_hours']}h (estimated; separate from provider billing)")
         return health.status == "healthy"
     except Exception as exc:
         _error(exc, fmt)
@@ -209,7 +220,10 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
     while True:
         try:
             text = reader.read().strip()
-        except (EOFError, OSError, KeyboardInterrupt):
+        except KeyboardInterrupt:
+            print("\nInput cleared. Use /exit or Ctrl+D to leave FreeCompute.")
+            continue
+        except (EOFError, OSError):
             print("\nLocal state saved. Remote GPU sessions must be stopped separately.")
             return 0
         if not text:

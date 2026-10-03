@@ -145,11 +145,14 @@ def main():
         assert wrong_env["FC_FIXTURE_KEY"] not in out and not fresh_server.requests
         record("reconnect wrong key fails cleanly without secret output or task dispatch")
         server.health_http_status = 200
-        out = cli("commands and model selection", "/help\n/help recovery\n/status\n/workers\n/models\n/model chat fixture-chat-worker\n/model code fixture-code-worker\n/skills\n/new\n/sessions\n/run-next\n/cancel\n/image\n/image-server\n/clear\n/typo\n/exit\n")
+        out = cli("commands and model selection", "/help\n/help recovery\n/status\n/workers\n/models\n/model chat fixture-chat-worker\n/model code fixture-code-worker\n/skills\n/image-model\n/new\n/sessions\n/run-next\n/cancel\n/image\n/image-server\n/clear\n/typo\n/exit\n")
         assert "Profile   chat" in out and "Profile   code" in out and "Unknown command" in out
         assert "No active task to cancel" in out and not server.requests
         assert "No queued task currently has an eligible free worker" in out and "Recorded task outcome" not in out
         record("slash commands, explicit model/worker selection and safe unknown command")
+        assert all(command in out for command in ('/review', '/research', '/leetcode', '/connect-image', '/image-model', '/skill'))
+        assert 'Weekly quota: unknown' in out and 'Session age unknown' in out and 'limit unknown' in out
+        record('installed bundled skills and generic unknown telemetry; no invented deadline/quota')
 
         out = cli("read edit test", "fix calculator\ny\ny\n/diff\n/exit\n")
         assert "Reading calculator.py" in out and "Edit requested" in out and "Run command?" in out
@@ -264,7 +267,7 @@ def main():
         record("native Windows Ctrl+Break/SIGINT: local stop confirmed, remote acknowledgement unknown", exit=process.returncode,
                signal="CTRL_BREAK_EVENT" if os.name == "nt" else "SIGINT")
 
-        report = {"date": "2026-10-03", "mode": "deterministic loopback inference; real local effects; no GPU",
+        report = {"date": "2026-10-04", "mode": "deterministic loopback inference; real local effects; no GPU",
                   "checks": results, "python": str(python), "executable": str(executable), "wheel": str(wheel), "workspace": str(workspace)}
         (root / "acceptance.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         (root / "transcripts.json").write_text(json.dumps(transcripts, indent=2), encoding="utf-8")

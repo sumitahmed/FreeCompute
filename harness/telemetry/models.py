@@ -99,7 +99,17 @@ def normalize(raw, *, worker_id="", provider="", configured_limit=None, no_deadl
         legacy = raw.get("maxSessionSeconds") if raw.get("sessionLimitSource") in {"provider", "runtime", "authoritative"} else None
         if legacy is not None:
             m["session_limit_seconds"] = metric(legacy, "provider-reported", str(raw["sessionLimitSource"]), name="session_limit_seconds")
-        elif no_deadline:
+    manifest = raw.get('session_manifest', {})
+    if isinstance(manifest, dict):
+        used_manifest = False
+        for name in ('session_age_seconds', 'session_limit_seconds', 'session_remaining_seconds'):
+            if m[name]['value'] is None and manifest.get(name) is not None:
+                m[name] = metric(manifest[name], 'configured', 'worker/session manifest', name=name)
+                used_manifest |= m[name]['value'] is not None
+        if used_manifest:
+            result.observed_at = min(result.observed_at, _time(manifest.get('observed_at'), now))
+    if m['session_limit_seconds']['value'] is None:
+        if no_deadline:
             m["session_limit_seconds"] = metric("none", "configured", "worker session_has_no_deadline", name="session_limit_seconds")
         elif configured_limit is not None:
             m["session_limit_seconds"] = metric(configured_limit, "configured", "worker session_limit_seconds", name="session_limit_seconds")

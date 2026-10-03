@@ -133,7 +133,7 @@ def hardware_metrics(gpus, llama_ok):
                 data = json.loads(response.read(65536))
             if field == 'active_inference_slots' and isinstance(data, list) and all(isinstance(s.get('is_processing'), bool) for s in data):
                 metrics[field] = item(sum(s['is_processing'] for s in data), 'llama-server /slots')
-            elif field == 'model_loaded':
+            elif field == 'model_loaded' and llama_ok:
                 metrics[field] = item(', '.join(str(s['id']) for s in data['data']), 'llama-server /v1/models')
         except Exception:
             pass

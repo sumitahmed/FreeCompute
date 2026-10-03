@@ -30,7 +30,10 @@ unknown. A Colab-compatible supervisor uses the same contract and a configured
 ## Deadlines and quota
 
 Deadline precedence: valid runtime/provider telemetry → authoritative legacy
-runtime fields → explicit worker config → unknown. `workers[].session_limit_seconds`
+runtime fields → worker/session manifest → explicit worker config → unknown.
+`session_manifest` accepts an observation timestamp and explicit age/limit/remaining
+values, labeled with the manifest source; stale observations do not produce warnings.
+`workers[].session_limit_seconds`
 is an explicitly configured assumption. `session_has_no_deadline: true` declares
 a persistent worker with no session deadline; it must not also have a limit.
 A configured limit without an actual account session age cannot produce remaining

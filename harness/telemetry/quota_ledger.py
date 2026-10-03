@@ -71,6 +71,7 @@ class QuotaLedger:
             "last_observed_hours": self.last_observed_hours,
             "observed_as_of": self.observed_timestamp_iso,
             "session_consumed_hours": round(self.active_session_seconds / 3600.0, 3),
+            "local_task_wall_time_hours": round(self.cumulative_consumed_hours, 3),
             "estimated_remaining_hours": round(self.estimated_remaining_hours, 2) if self.estimated_remaining_hours is not None else None,
             "is_estimate": True,
             "accounting_basis": "local_task_wall_time; not GPU billing or allocation uptime",

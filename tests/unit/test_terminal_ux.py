@@ -107,6 +107,17 @@ class MenuTests(unittest.TestCase):
             self.assertEqual(reader.read(), '/help')
         self.assertEqual(read.call_args.args[0], 'freecompute> ')
 
+    def test_ctrl_c_at_prompt_clears_input_without_dispatch_or_exit(self):
+        from harness.cli.main import run_interactive_repl
+        output = io.StringIO()
+        with patch('harness.cli.main._startup'), patch.object(TerminalInput, 'read', side_effect=[KeyboardInterrupt(), '/exit']) as read, contextlib.redirect_stdout(output):
+            result = run_interactive_repl(HarnessConfig(workspace_root=str(self.root)), self.client, self.client, self.client,
+                self.core.skills, self.core.session_tracker, self.core.quota, self.client, TerminalFormatter(False))
+        self.assertEqual(result, 0)
+        self.assertEqual(read.call_count, 2)
+        self.assertIn('Input cleared', output.getvalue())
+        self.assertEqual(self.core.list_sessions(), [])
+
     def test_tab_escape_and_multiline_keyboard_flow(self):
         with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
             reader = TerminalInput(self.registry, self.client, interactive=True)

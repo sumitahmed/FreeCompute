@@ -64,12 +64,16 @@ class TerminalFormatter:
         print(f"Workspace  {self.dim(workspace_path)}")
         print(f"Model      {self.bold(model_alias)}")
         print(f"Worker     {self.cyan(health_summary.get('worker', 'not configured'))}")
+        if health_summary.get('compute'):
+            print("Compute    " + self.dim(health_summary['compute']))
+        if health_summary.get('image'):
+            print("Image      " + self.dim(health_summary['image']))
         status = health_summary.get("status", "unverified")
         print(f"Status     {self.green(status) if status == 'healthy' else self.yellow(status)} (observed at startup)"
               if status != "unconfigured" else "Status     unconfigured")
         if "context_capacity" in health_summary:
             print(f"Context    {health_summary['context_capacity']:,} tokens (declared; {health_summary.get('verification', 'unverified')})")
-        print(self.dim("/help for commands · Ctrl+C during a task requests local cancellation\n"))
+        print(self.dim("Type / for commands · Alt+Enter for a new line · Ctrl+C to cancel\n"))
 
     def print_phase(self, phase, detail):
         print(self.cyan("● ") + terminal_text(detail))
@@ -177,13 +181,15 @@ class TaskPresentation:
             self._phase(phase, detail)
 
     def _phase(self, phase, detail):
-        if phase in {"started", "queued", "waiting_approval"}:
+        if phase in {"started", "queued"}:
             return
         self.boundary()
         if phase == "requesting_model":
             self.fmt.print_phase(phase, f"Thinking ({self.model_alias or detail}) · worker {detail}")
         elif phase == "executing_tool":
             self.fmt.print_tool_proposal(detail, self.proposals.get(detail, {}))
+        elif phase == 'waiting_approval':
+            self.fmt.print_phase(phase, 'Waiting for approval')
         elif phase in {"waiting", "recovering"}:
             self.fmt.print_phase(phase, detail)
         else:

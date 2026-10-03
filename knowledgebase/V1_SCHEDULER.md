@@ -1,5 +1,13 @@
 # V1 durable inference queue and scheduler
 
+2026-10-04 CLI checkpoint: text and image selections/connections are independent,
+but both still use this scheduler and durable receipts. Telemetry, model menus
+and URL replacement never grant capacity or release a quarantined lease. Queued
+tasks keep their saved routes; completed effects are not replayed. The current
+installed CLI checks and earlier live measurements are distinguished in
+[V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md) and
+[WORKER_TELEMETRY.md](WORKER_TELEMETRY.md).
+
 For the live dual-T4 acceptance, `kaggle-qwen` has concurrency 1
 and exclusive `gpu0` + `gpu1` in pool `kaggle-dual-t4`. The notebook startup and
 Cloudflare procedure and observed support limits are in

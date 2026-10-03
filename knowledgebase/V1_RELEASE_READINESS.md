@@ -1,5 +1,108 @@
 # FreeCompute V1 CLI release readiness
 
+## Current final CLI candidate - 2026-10-04
+
+The final terminal/product/telemetry pass is implemented locally on
+`v1/cli-release`, continuing from `5617ab6f1fc8c9f73816cae35ed837750a14375a`.
+This is a **beta candidate for the user's manual test**, not a published release.
+The earlier 2026-10-03 section below is historical evidence. It does not describe
+today's terminal library, telemetry, notebook fast path or current test count.
+GUI remains deferred. No push, merge, tag, release or deployment was performed.
+
+### Fresh verified evidence
+
+| Check | Result |
+| --- | --- |
+| Full unit suite | **285 passed in 116.888s**; original 240 tests preserved; 45 new terminal/assets/web/image/telemetry regressions |
+| Wheel package acceptance | **21 passed**, running the installed console entrypoint outside the repo in a fresh venv |
+| Packaged runtime | **51 Python files** byte-matched to source; configuration sample and three bundled skill manifests present; no experiments, GUI/API/tests or private dotenv |
+| Windows interactive acceptance | **5 additional checks passed**, actual installed `freecompute.exe` launched by PowerShell through native ConPTY; decoded terminal screens inspected |
+| Keyboard/menu | Immediate `/` palette with descriptions; `/mo` filtering; arrows/Enter, fast Tab, Escape; text/image selectors from actual registry; history; Alt+Enter multiline; 120-to-90-column resize |
+| Prompt Ctrl+C | Clears pending input and leaves the CLI usable; active-task cancellation and approval denial remain independently tested |
+| Stream/Markdown | Rendered heading, bold and fenced Python visible before deliberately held HTTP fixture completion; no broken ANSI fragments or hidden reasoning |
+| Local coding effects | Real read, proposed edit, interactive approval, applied change, approved real unittest command, result inspection and final answer; two calculator tests passed |
+| Durable state | Diff, restart/resume, completed effects without replay, sealed undo preview/denial and later approved restore; queue and unknown-outcome fences preserved |
+| Text reconnect | Authenticated health/models; fresh URL overrides expired HTTP 530 config; wrong URL/key nonfatal; temporary URLs not written to config |
+| Independent images | Separate key/HTTP endpoint; actual authenticated health, queued workflow and fixture artifact download; text request counts/routes unchanged by image connection/generation |
+| Skills/web | Installed bundled `/review`, `/research`, `/leetcode` and actual project skill; `/research` performs real HTTP fixture search/page parsing through ToolBroker and three SSE model turns with visible search/fetch activity |
+| Telemetry | Generic GPU/CPU/RAM/disk/session provenance; partial/malformed metrics, stale observations, runtime/manifest/config precedence, no default deadline/quota, optional telemetry failure without inference failure |
+| Kaggle notebook | Canonical server and identical compatibility copy compile; builder compiles; outputs cleared; shutdown guard skips ordinary fresh-session Run All |
+| Fast assets | Executed cache detection, complete library/model hashes and pin/version checks with local files/fakes; incompatible/tampered/path-invalid assets rejected; unavailable artifact takes pinned-source fallback |
+
+All inference in **this pass** used explicit authenticated loopback fixtures.
+No current Kaggle session was restarted, no new model/GPU request was made and
+no GPU quota was consumed. Earlier real dual-T4 evidence is retained in
+[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md), including actual
+inference/tool cycles, streaming and context escalation to 9,714 measured input
+tokens. Fixtures are not new live model or image-generation certification.
+
+The repeatable commands are in [tests/runtime/README.md](../tests/runtime/README.md).
+Package scripts print external evidence directories holding `acceptance.json`,
+transcripts and decoded `screens.json`. The final wheel's runtime is byte-identical
+to the accepted wheel; its last rebuild corrects README metadata only.
+
+### Product and public tree
+
+- `prompt-toolkit>=3.0.48,<4` and `rich>=13.9,<15` are the two new direct product
+  dependencies. `pywinpty` and `pyte` are optional acceptance-runner dependencies,
+  not shipped requirements. No product dependency was removed.
+- One command registry supplies help, aliases, completion and custom skill commands.
+  `/model` switches text routes; `/image-model` switches only configured image routes.
+  New tasks use the selection; saved queued tasks retain their original route.
+- The canonical text notebook is `kaggle/freecompute_dual_gpu_server.ipynb`;
+  `universal_dual_gpu_server.ipynb` is an identical compatibility copy.
+  `dataset_builder.ipynb` is the optional private-dataset fast-start helper.
+  Root text proof/image notebooks are clearly historical. No current authenticated
+  V1 image notebook or arbitrary image-checkpoint switching is claimed.
+- The old standalone image launchers now enter the Core-owned workflow. Historical
+  prototype classes remain for compatibility/security regression tests.
+- Generated `.archify` rendering artifacts and obsolete notebook generator scripts
+  are removed from the tracked public tree and ignored locally. Existing local
+  files and Git history are preserved. GUI is excluded; no frontend was imported.
+- README, security/contribution/changelog/config-example/package metadata and
+  knowledgebase links now describe the actual beta CLI and its limitations.
+  Final secret/path scans and publication file inventory are recorded separately.
+
+See [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md), [WORKER_TELEMETRY.md](WORKER_TELEMETRY.md)
+and [KAGGLE_FAST_START.md](KAGGLE_FAST_START.md) for exact contracts/procedures.
+
+### Known limits and final manual test
+
+The actual new Kaggle endpoint, revised CUDA builder/cache deployment, live image
+gateway and the user's physical terminal fonts/wrapping remain manual checks.
+ConPTY/PowerShell keyboard and screen behavior was executed; a physical Windows
+Terminal screenshot is not claimed. Other OS/Python versions were not executed.
+No full 65,536-token input certification or remote cancellation acknowledgement
+was added. Quick Tunnel SSE is not officially supported; earlier streaming is
+historical endpoint-specific evidence. Unknown leases still require independent
+idle evidence and explicit reconciliation. Account session age/deadline/quota
+can remain unknown; an old running supervisor cannot report newly added metrics
+without a future notebook deployment. Do not restart it merely for telemetry.
+Approved shell commands retain host privileges rather than an OS sandbox, and
+prompts/tool results reach the inference provider.
+
+Launch with the existing private key and your fresh Kaggle URL:
+
+```powershell
+freecompute --remote-url "PASTE-KAGGLE-URL-HERE"
+```
+
+1. Type `/`, then `/mo`; navigate with arrows, Enter/Tab and Escape.
+2. Run `/model`, `/skills`, `/status`, `/workers`; verify actual routes, skill
+   manifests and observed/unknown telemetry. Alt+Enter adds a prompt line.
+3. Request a small task in a disposable project. Inspect the proposed file diff
+   and exact test command/cwd, approve explicitly, then inspect the real result.
+   Use `/diff`, `/sessions`, restart and `/resume ID`; completed work must not replay.
+   Run `/undo` and deny first; the file must remain unchanged.
+4. If the tunnel changes, use `/connect NEW-URL`. For a separately configured
+   supported image gateway use `/connect-image IMAGE-URL`, `/image-model` and
+   `/image PROMPT`; its own key comes from dotenv/config. Keep Kaggle running
+   during this manual test, then explicitly shut it down when local work is done.
+
+No further architecture or GUI phase is part of this handoff.
+
+## Historical 2026-10-03 release pass
+
 2026-10-03. **Local implementation and acceptance are complete; ready for the
 user's manual CLI test.** This is a beta release candidate, not a published
 production release or universal hardware/model certification. Work is local on

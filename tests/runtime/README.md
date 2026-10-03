@@ -4,8 +4,29 @@ The final CLI release check is `python tests/runtime/cli_release_acceptance.py`.
 It builds from an external source snapshot, installs in a clean venv and runs
 the installed entrypoint without source `PYTHONPATH`. Its explicit loopback
 fixture is in `cli_fixture.py`; it is not packaged or a default inference mode.
-The final pass observed 240 unit tests and 20 wheel acceptance checks; current
-details/manual limits are in `knowledgebase/V1_RELEASE_READINESS.md`.
+The 2026-10-04 pass adds terminal menus, generic telemetry, web activity,
+authenticated independent image connections and verified notebook assets.
+Current counts and evidence are in `knowledgebase/V1_RELEASE_READINESS.md`;
+the older 240-test/20-check result is historical.
+
+On Windows, also exercise the installed wheel's keyboard and rendered screens
+in PowerShell through native ConPTY (optional **test-runner** dependencies):
+
+```powershell
+python -m pip install pywinpty pyte
+python tests/runtime/cli_polish_acceptance.py --package-dir "DIRECTORY-PRINTED-BY-CLI-RELEASE-ACCEPTANCE"
+```
+
+This runs the installed `freecompute.exe` outside the checkout. It captures
+terminal screens for `/`, filtering, arrows/Enter/Tab/Escape, model selectors,
+bundled/project skills, resize, history and multiline input; checks streamed
+Markdown while fixture completion is held; and authenticates separate image
+health/generation/artifact HTTP requests. A separate installed CLI process uses
+an explicit test-only transport to map web searches/pages onto real loopback
+HTTP fixtures. Parsing, Core tool execution, three model turns and activity
+rendering remain real. This does not certify an Internet search service, actual
+image model, physical Windows Terminal renderer or GPU. Neither pywinpty nor
+pyte is a product dependency.
 
 Run the complete existing and new unit suite from the repository root:
 

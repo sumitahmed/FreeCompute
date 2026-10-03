@@ -1,5 +1,13 @@
 # V2 staged roadmap and review decisions
 
+Final V1 CLI checkpoint, 2026-10-04: terminal discovery/rendering, local tool
+activity, web/skills, separate authenticated image routing, generic optional
+hardware/session telemetry and reusable Kaggle assets are implemented and
+locally tested. See [V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md) for exact
+evidence and manual limits. This is the last implementation pass before the
+user's manual test; it does not authorize GUI, a new architecture phase, remote
+deployment, push, merge, tag or publication.
+
 ## Current V1 product decision — 2026-10-03
 
 V1 ships as the CLI/Core/agent-runtime/queue/worker-registry product. GUI is

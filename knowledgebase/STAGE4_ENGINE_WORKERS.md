@@ -1,5 +1,14 @@
 # V1 engine and worker backend
 
+Current product checkpoint, 2026-10-04: V1 is the **CLI**, with GUI deferred.
+The earlier permission to begin GUI work below is historical and superseded.
+The command menu, independent text/image connections, bundled skills and optional
+generic telemetry are documented in [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md) and
+[WORKER_TELEMETRY.md](WORKER_TELEMETRY.md). The canonical deployment notebook and
+verified dataset/cache/source fallback are in [KAGGLE_FAST_START.md](KAGGLE_FAST_START.md).
+Fresh local installed-wheel evidence is in [V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md).
+It does not replace or extend the historical real-GPU measurements below.
+
 Real-worker continuation, 2026-10-03: use the feature branch's corrected
 `kaggle/freecompute_dual_gpu_server.ipynb` and the exact manual procedure in
 [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Both server wrappers
