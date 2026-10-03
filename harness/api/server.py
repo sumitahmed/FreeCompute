@@ -297,6 +297,10 @@ class Handler(BaseHTTPRequestHandler):
             for name in ("prompt", "session_id", "request_id", "profile_id", "worker_id"):
                 if name in body:
                     string(body[name], name, optional=name in {"profile_id", "worker_id"})
+            if "worker_id" in body and body["worker_id"] is None:
+                # Explicit automatic route, distinct from omitting the field and
+                # inheriting Core defaults. Core already supports the empty hint.
+                body["worker_id"] = ""
             task_id = core.submit(**body)
             runtime.wake()
             value, status = core.views.task(task_id), 202

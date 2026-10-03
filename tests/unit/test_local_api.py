@@ -334,6 +334,17 @@ class LocalAPITests(unittest.TestCase):
         self.assertIn("exited 0", final["final_answer"])
         self.assertEqual(len(self.request("GET", "tasks")[1]), 1)
 
+    def test_explicit_automatic_route_differs_from_default_and_stays_bound(self):
+        self.request("POST", "demo/worker", {"connected": False})
+        automatic = self.submit(worker_id=None, request_id="automatic-route")
+        default = self.submit(request_id="default-route")
+        jobs = self.request("GET", "queue")[1]["jobs"]
+        self.assertEqual(next(j for j in jobs if j["task_id"] == automatic["id"])["requested_worker"], "")
+        self.assertEqual(next(j for j in jobs if j["task_id"] == default["id"])["requested_worker"], "demo-worker")
+        self.request("POST", "defaults", {"profile_id": "demo-chat", "worker_id": "demo-chat-worker"})
+        after = self.request("GET", "queue")[1]["jobs"]
+        self.assertEqual([(j["task_id"], j["requested_worker"]) for j in jobs], [(j["task_id"], j["requested_worker"]) for j in after])
+
 
 if __name__ == "__main__":
     unittest.main()

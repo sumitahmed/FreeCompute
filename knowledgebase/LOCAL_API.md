@@ -112,6 +112,9 @@ new additive Core command using the same session insertion path as submit. No
 frontend-generated session/task/action/approval IDs become authoritative.
 Client-generated `request_id` is only the existing idempotency command key.
 Core defaults are process-scoped; restart defaults come from Core configuration.
+For task submission, omitted `worker_id` inherits Core defaults; explicit JSON
+`null` means the automatic eligible-worker route (Core's existing empty route
+hint). Both choices are bound at submission and survive later default changes.
 
 ## Dispatch and approvals
 
