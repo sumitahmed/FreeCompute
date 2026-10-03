@@ -89,9 +89,9 @@ class MenuTests(unittest.TestCase):
                 pipe.send_text('\x1b[B\r')  # Down selects, Enter completes without submitting.
                 time.sleep(.1)
                 observed['selected'] = reader.session.default_buffer.text
-                pipe.send_text('\x1b')
-                time.sleep(.2)
                 pipe.send_text('\r')
+                time.sleep(.5)
+                pipe.close()  # Bound failures rather than leaving a prompt waiting forever.
             thread = threading.Thread(target=drive, daemon=True)
             thread.start()
             answer = reader.read()
