@@ -30,6 +30,15 @@ and main merge remain outside the current GUI task. Older evidence stays histori
 
 ## Sequence and evidence gates
 
+GUI continuation, 2026-10-03: React/TypeScript/Vite workspace and authenticated
+loopback HTTP/SSE Core transport are implemented. **230 backend unit tests**
+(original 210 + 20 API), **10 frontend tests**, and **5 Chromium browser flows**
+passed; production build and normal launcher smoke passed. Approval/edit/real
+local test receipts, refresh/reconnect, queue and cancellation/reconciliation
+were exercised with explicitly simulated inference. No GPU quota, main merge,
+website, Tauri, installer, Rust migration or subagents were used. The usable
+local GUI is ready for review; desktop/release gaps are in [V1_GUI.md](V1_GUI.md).
+
 | Stage | Scope | Acceptance gate |
 | --- | --- | --- |
 | 0: review | Review audit, foundation, scope, policy and language decisions | User explicitly approves architecture and next work scope |

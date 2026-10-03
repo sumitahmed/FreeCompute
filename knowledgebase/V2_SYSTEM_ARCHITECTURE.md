@@ -143,7 +143,13 @@ flowchart TB
   Engines --> Remote[Local or remote inference workers]
 ```
 
-The diagram shows the broader proposed target. Its basic registry/inference scheduler now exists in the bounded V1 slice; GUI/SDK automation, delegation and distributed scheduling remain proposed. CoreService calls brokers; the driver cannot call them. Engine adapters receive model/input/cancellation data, not tool authority. Local Python extensions and approved shell commands remain trusted-host code, not an OS sandbox.
+The diagram shows the broader target. Its basic registry/inference scheduler
+exists in the bounded V1 slice, and the browser GUI/minimum local Core API now
+exist in the GUI continuation. SDK automation, delegation and distributed
+scheduling remain proposed. CoreService calls brokers; the driver cannot call
+them. Engine adapters receive model/input/cancellation data, not tool authority.
+Local Python extensions and approved shell commands remain trusted-host code,
+not an OS sandbox.
 
 ## Contracts
 

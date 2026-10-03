@@ -51,7 +51,9 @@ yet bundled into the Python wheel or a desktop installer.
 
 - Listener is restricted to `127.0.0.1`; public bind addresses are rejected.
 - Every request validates its exact loopback Host. Browser Origin must match
-  the service or an explicitly configured loopback dev origin. No wildcard CORS.
+  the service's 127.0.0.1/localhost address or an explicitly configured loopback
+  dev origin. No wildcard CORS. Use matching hostnames for GUI and API so the
+  SameSite cookie remains same-site, especially with Vite.
 - `POST /api/v1/auth/session` exchanges the local token for a random 12-hour
   HttpOnly, SameSite=Strict cookie and a CSRF nonce held in client memory.
 - Cookie-authenticated mutations require both allowed Origin and
@@ -160,8 +162,9 @@ queue and committed snapshots, with revision checks against stale task snapshots
 
 ## Verification status
 
-Tested during implementation: 15 HTTP/Core API tests, 10 frontend transport and
-component tests, and a successful strict TypeScript/Vite production build.
-Full-suite/browser final results are recorded in [V1_GUI.md](V1_GUI.md).
+Tested final evidence: 20 HTTP/Core API tests in the **230-pass full unit suite**,
+10 frontend transport/component tests, 5 Chromium browser flows, a strict
+TypeScript/Vite production build and the normal CLI launcher smoke. Exact timings
+and browser cases are recorded in [V1_GUI.md](V1_GUI.md).
 Real GUI-to-GPU acceptance, OS isolation, desktop auth/bootstrap, distribution,
 and high-volume multi-client performance remain **Unverified / Proposed**.

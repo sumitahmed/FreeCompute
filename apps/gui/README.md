@@ -1,7 +1,9 @@
 # FreeCompute local GUI
 
 React + TypeScript + Vite client for the existing Python Core. No GPU is needed
-for development. From the repository root:
+for development. This project requires Node 22.12+ and the existing Python
+dependencies; tested with Node 24.16.0 on Windows. See the
+[Vite prerequisites](https://vite.dev/guide/). From the repository root:
 
 ```powershell
 npm --prefix apps/gui ci
