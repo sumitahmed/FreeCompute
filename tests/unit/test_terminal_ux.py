@@ -72,9 +72,10 @@ class MenuTests(unittest.TestCase):
             reader = TerminalInput(self.registry, self.client, interactive=True)
             observed = {}
             def drive():
-                deadline = time.time() + 3
+                deadline = time.time() + 6
                 while not reader.session.app.is_running and time.time() < deadline:
                     time.sleep(.01)
+                time.sleep(.1)  # Win32 prompt initializes/reset its buffer after run begins.
                 pipe.send_text('/mo')
                 while time.time() < deadline:
                     state = reader.session.default_buffer.complete_state
