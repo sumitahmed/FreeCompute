@@ -1,6 +1,15 @@
 # GUI and landing/documentation direction
 
-Research/design only, 2026-10-02. No GUI, website, screenshots, deployment or frontend scaffold was created.
+Historical research/design, 2026-10-02: no GUI, website or frontend was created in that milestone.
+
+Implemented continuation, 2026-10-03: the user approved a React/TypeScript/Vite
+browser GUI and minimum authenticated loopback Core API on `v1/gui`, from accepted
+backend `755e944`. Sessions, conversation/streamed output, local approval cards,
+worker/profile selectors, queue/lease/recovery panels, settings and light/dark
+responsive layout are implemented. Exact fixture/browser/local-suite evidence
+and limitations are in [V1_GUI.md](V1_GUI.md); launch/auth/event contracts are in
+[LOCAL_API.md](LOCAL_API.md). No Kaggle quota was used. Website, Tauri, installer,
+delegation and advanced memory/automation remain proposed and outside this phase.
 
 ## Lessons from inspected products
 
@@ -8,9 +17,13 @@ Codex app-server separates clients from runtime protocol and approvals; OpenCode
 
 ## GUI target
 
-Recommend a local browser dashboard backed by the optional authenticated core daemon after CLI/API contracts stabilize. It is easy to attach/detach and avoids requiring desktop packaging for the first GUI. Desktop shell and VS Code client remain later options; evaluate OS integration, signing/update cost and approval UX before choosing. The dashboard must not require a hosted account or upload workspace state.
+The approved first client is a local browser GUI backed by the minimal authenticated
+Python Core HTTP/SSE service. It attaches/detaches without cancelling Core work,
+uses the same permissions/receipts/scheduler and requires no hosted account.
+Desktop shell and VS Code client remain later options; evaluate OS integration,
+signing/update cost and webview auth/bootstrap separately.
 
-Proposed workspace screen:
+Historical broader workspace target (skills/knowledge/delegation surfaces remain proposed):
 
 ```text
 Workspace / session     | Local-only constraint | Worker/model choice
@@ -20,7 +33,9 @@ Workers and models     | Context/usage, artifacts, tests and outcomes
 Skills and knowledge   | Detail drawer: provenance, freshness, safe logs
 ```
 
-This is an information layout, not an implemented mockup. The core publishes all displayed states; the UI does not infer “thinking,” progress percentages, GPU release or successful tests from silence.
+The implemented narrower screen is recorded in V1_GUI; this broader layout remains
+a research target. Core publishes task states; the UI does not infer “thinking,”
+progress percentages, GPU release or successful tests from silence.
 
 | Surface | Behavior |
 | --- | --- |

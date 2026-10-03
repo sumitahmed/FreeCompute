@@ -1,6 +1,42 @@
 # V2 system architecture
 
-Updated, 2026-10-02. The user authorized the narrow native driver, Stage 3 runtime and subsequently the bounded V1 engine/worker/queue backend. Broader delegation, advanced scheduling, GUI and daemon architecture below remains proposed. The pinned SDK was rejected in [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); historical Stage 3 acceptance is in [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md), and current V1 evidence is in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md).
+Updated, 2026-10-03. The user authorized the native driver, Stage 3 runtime,
+bounded V1 engine/worker/queue backend, bounded real Kaggle acceptance and now
+the GUI foundation/minimum local Core API. Broader delegation, automation and
+advanced scheduling remain proposed. The pinned SDK was rejected in
+[FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); historical Stage 3 evidence is
+in [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md), current backend/live evidence
+in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md), and current client evidence
+in [V1_GUI.md](V1_GUI.md).
+
+## Implemented V1 GUI and local API
+
+On `v1/gui` from `755e944`, `apps/gui` is the React/TypeScript/Vite browser client.
+`python -m harness.api` serves built assets plus `/api/v1` on authenticated
+loopback HTTP. It wraps the existing CoreService; its dispatcher calls Core's
+`run_next`/resume, and approval delivery wakes the existing permission resolver.
+There is no parallel agent, permission, task or resource authority.
+
+| Boundary | Implemented path and behavior |
+| --- | --- |
+| Browser client | `apps/gui/src`: presentation, transient selection/draft, sequence replay and HttpOnly auth session |
+| HTTP/SSE | `harness/api/server.py`: versioned commands/queries, exact Host/Origin/CSRF, bounded durable-event replay |
+| Thread plumbing | `harness/api/runtime.py`: calls Core dispatch/resume and waits for explicit approval decisions |
+| Core projections | `harness/core/views.py`: public sessions/tasks/approvals/queue/leases/actions; no serialized private driver/database rows |
+| Session creation | `CoreService.create_session`: additive persisted backend-ID empty session using the existing submission insertion path |
+| Development fixtures | `harness/api/demo.py`: labelled simulated inference; real existing sandboxed local tools, no remote configuration |
+
+SQLite schema v2 and the accepted tool/scheduler/quarantine semantics are retained.
+SSE uses existing per-session sequence; browser refresh reconstructs committed
+history and closing a viewer does not cancel. Receipt replay and reconciliation
+remain Core decisions. Core restart expires stale approval bindings; transport
+auth restarts independently of persistent work. Details remain bound to a task's
+profile/worker even when selectors change for a new task. No hidden reasoning or
+GPU capacity/remote cancellation acknowledgement is inferred by the client.
+
+Contract/launch/security details: [LOCAL_API.md](LOCAL_API.md). Tests, screenshots
+and desktop gaps: [V1_GUI.md](V1_GUI.md). Tauri/assets/sidecar distribution, website,
+standing headless grants and broader daemon automation below remain proposed.
 
 ## Implemented Stage 3 slice
 

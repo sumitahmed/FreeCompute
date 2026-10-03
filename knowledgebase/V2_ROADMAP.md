@@ -7,10 +7,17 @@ Preparation consumed no GPU quota. The user then manually started a worker and
 authorized real acceptance on 2026-10-03. Real text/tool, resource queuing,
 context and safe pre-dispatch reconnect evidence is now in that ledger. Approved
 four-turn local coding and running-cancellation fencing also passed. The bounded
-V1 backend is accepted enough to begin GUI development; no GUI implementation
-has started, and broader release/profile certification remains open.
+V1 backend was accepted enough to begin GUI development at `755e944`. The user
+subsequently authorized the GUI foundation/local API on `v1/gui`; the implemented
+browser client and fixture evidence are in [V1_GUI.md](V1_GUI.md) and
+[LOCAL_API.md](LOCAL_API.md). Broader release/profile certification remains open.
 
-Updated, 2026-10-02. **The user authorized Stages 1-3 and subsequently a bounded V1 backend slice: engines, worker/model registry, basic durable FIFO queue and resource accounting. Delegation, advanced memory/automation/scheduling, GUI, daemon, deployment, GPU sessions, merge and PR remain outside this milestone.** Older completion claims are historical.
+Historical bounded-backend scope, 2026-10-02: Stages 1-3 and V1 engines/registry/
+FIFO/resource accounting were authorized; GUI/daemon/GPU work was outside that
+milestone. On 2026-10-03 the user separately authorized bounded live acceptance,
+then React GUI and the minimum local HTTP/SSE Core service. Delegation, advanced
+memory/automation/scheduling, website/deployment, Tauri, installer, Rust rewrite
+and main merge remain outside the current GUI task. Older evidence stays historical.
 
 ## Recorded progress — historical milestones and 2026-10-03 live continuation
 
@@ -33,7 +40,7 @@ Updated, 2026-10-02. **The user authorized Stages 1-3 and subsequently a bounded
 | 5: scheduler/delegation | Minimal durable queue, capacity and physical claims implemented in V1; child budgets/grants, delegation and advanced scheduling remain proposed | Local FIFO/capacity/GPU alias/cancel/failure/restart evidence now; delegation requires separate scope |
 | 6: skills/knowledge/media | Repaired portable skill commands/workflows, controlled knowledge promotion, Comfy job/artifact adapter; embeddings only if needed | Skill compatibility, protected promotion, memory provenance, job-ID correlation/auth/path/retention tests |
 | 7: persistent automation | Optional daemon, approved schedules, headless grants, homelab worker lifecycle | Restart/overlap/DST/missed-run cases; no silent risky effects or notebook keepalive dependency |
-| 8: GUI/docs site | Authenticated dashboard client and released documentation/landing site | Same-core approval/recovery behavior, accessibility, evidence-backed compatibility/demo/install claims |
+| 8: GUI/docs site | React GUI and minimum authenticated local Core API implemented on `v1/gui`; website/Tauri/distribution remain proposed | Same-Core fixture approval/edit/test/replay/reconnect/cancel evidence in V1_GUI; user review before desktop packaging, broader accessibility/OS/release gates remain |
 | Later | Validated video operations, more engines, editor/desktop clients, advanced retrieval | Operation-specific model/hardware/license tests and demonstrated need |
 
 Stages can contain bounded parallel design tasks, but dependency gates remain. Security fixes and SDK evaluation may be reviewed together; do not begin broad refactoring while current behavior is unclear. Images can move earlier if the user makes them first-release scope, without skipping authority/artifact gates. Timelines/cost estimates require the foundation spike; no invented completion dates are supplied.
@@ -77,12 +84,13 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 4. **Workers/privacy:** first supported local/private server profiles; acceptable remote data disclosure and transport; notebook modes require current provider-policy confirmation.
 5. **State/knowledge:** accept runtime data outside OneDrive/repo; opt into versioned reviewed `.freecompute/knowledge`; retention/encryption preferences for private snapshots/artifacts.
 6. **Autonomy:** which schedules may have standing grants, with what paths/actions/network/budgets/expiry? Default headless tasks cannot auto-approve.
-7. **Client:** local browser dashboard first versus desktop or editor priority after API stabilization.
+7. **Client:** local browser GUI first was approved and implemented. Desktop/webview packaging and editor clients remain later review decisions.
 
 The authorized live V1 gate is complete and accepted for GUI development within
 the recorded bounds. All live tests finished; the Kaggle session can be shut down.
-Next gate: the user selects GUI client/scope, preserving Core as authority for
-approvals, tool receipts, queue/capacity and unknown-outcome reconciliation.
+Next gate: review the usable local React GUI and its minimum authenticated Core
+API, preserving Core authority for approvals, receipts, queue/capacity and
+unknown-outcome reconciliation. Tauri/installer work has not started.
 The historical SDK experiment store remains isolated. Delegation, advanced
-scheduling, daemon and GUI work remain proposed; full profile/license/context
+scheduling and broader daemon automation remain proposed; full profile/license/context
 certification and broad deployment compatibility are not implied by these live tests.
