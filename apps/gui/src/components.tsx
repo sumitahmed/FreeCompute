@@ -95,7 +95,7 @@ export function Conversation({ tasks, events, approvals, busyApproval, onDecisio
           {item.reasoning && <details><summary>Reasoning emitted by the engine</summary><pre>{item.reasoning}</pre></details>}
         </div> : <section className="tool-card" key={item.key} aria-label={'Tool ' + item.name}>
           <div className="tool-heading"><strong>{item.name}</strong><Badge state={item.state} /></div>
-          <span className="muted">Executed locally by Core</span>
+          <span className="muted">Local tool · Core controlled</span>
           <pre className="tool-arguments">{item.arguments.command ? '$ ' + text(item.arguments.command) : JSON.stringify(item.arguments, null, 2)}</pre>
           {item.result && <ToolResult result={item.result} />}
         </section>)}

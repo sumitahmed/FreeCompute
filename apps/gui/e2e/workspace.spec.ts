@@ -89,9 +89,9 @@ test('cancellation shows local confirmation and quarantined capacity until expli
 test('registry compatibility, engine failures, and narrow responsive layout are usable', async ({ page }) => {
   await connect(page)
   const incompatible = page.getByLabel('Worker', { exact: true }).locator('option[value="demo-chat-worker"]')
-  await expect(incompatible).toBeDisabled()
+  await expect(incompatible).toHaveAttribute('disabled', '')
   await page.getByLabel('Profile', { exact: true }).selectOption('demo-chat')
-  await expect(incompatible).toBeEnabled()
+  await expect(incompatible).not.toHaveAttribute('disabled')
   await page.getByLabel('Profile', { exact: true }).selectOption('demo-code')
   await newTask(page, '[demo:failure] Simulate an engine authentication failure.')
   await expect(page.locator('.task-meta')).toContainText('failed')

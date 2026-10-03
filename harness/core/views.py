@@ -79,7 +79,13 @@ class CoreViews:
 
     def queue(self):
         fields = ("id", "task_id", "profile_id", "requested_worker", "assigned_worker", "state", "task_state", "waiting_reason", "sequence", "created_at")
-        return scrubber.structured([{key: row.get(key) for key in fields} for row in self.core.list_queue()])
+        rows = []
+        for job in self.core.list_queue():
+            row = {key: job.get(key) for key in fields}
+            lease = self.store.one("SELECT worker_id FROM inference_leases WHERE queue_id=? AND state IN ('active','quarantined')", (job["id"],))
+            row["assigned_worker"] = lease["worker_id"] if lease else None
+            rows.append(row)
+        return scrubber.structured(rows)
 
     def leases(self):
         return scrubber.structured(self.store.all("""SELECT l.id,l.worker_id,l.profile_id,l.state,l.reason,l.created_at,q.task_id
