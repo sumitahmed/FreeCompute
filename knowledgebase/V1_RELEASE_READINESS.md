@@ -28,14 +28,14 @@ FOR V1**. The prior GUI experiment remains on its separate branch.
 | Cancellation | Native Windows `CTRL_BREAK_EVENT` stopped installed CLI task locally; output explicitly left remote cancellation unconfirmed and remote outcome unknown; one-shot exit 1 |
 | Interrupted inference | Incomplete stream held a quarantined lease across new CLI process; `/resume` made no additional request |
 | Approval/security | Blank/EOF/OSError deny; old sandbox/approval/hash/undo/redirect tests preserved; split credential redacted and terminal controls removed |
+| Final releasable-source scan | **155 files, zero findings**; ignored private config/key files excluded; matched secret text is never reprinted |
 
 Wheel SHA256 observed in this run:
 `37a82349126ddcd9331f6efae00678ab4a636e0ec7fe4bca13b81fe5bf851334`.
 Acceptance script prints its temporary evidence directory, containing
 `acceptance.json` and `transcripts.json`; no private key is logged. The source
 secret scanner reports locations/rules without reprinting a matched secret and
-excludes ignored private files/generated caches. The final scan result is
-recorded below after documentation finalization.
+excludes ignored private files/generated caches. `git diff --check` also passed.
 
 All inference in this pass used explicit loopback fixtures. It made **no real
 Kaggle/model request and consumed no GPU quota**. Earlier live acceptance remains
@@ -83,10 +83,13 @@ python -m venv .venv
 .\.venv\Scripts\freecompute.exe --version
 ```
 
-In your existing `.env`, set `FREECOMPUTE_REMOTE_URL` to the **current** Kaggle
-URL, keep `FREECOMPUTE_API_KEY` matching the notebook secret and use the exact
-advertised model alias. The key is not a GUI/API token. Do not Run All or restart
-the running Kaggle model. Make a new disposable local workspace:
+Keep `FREECOMPUTE_API_KEY` in the existing private `.env`, matching the notebook
+secret. For the explicit registry flow, copy `harness/config.sample.yaml` to
+`config.yaml` only if that private file is missing; update `workers[].url` to the
+**current** Kaggle URL and `model_profiles[].model` to its exact advertised alias.
+`FREECOMPUTE_REMOTE_URL` controls only the legacy single-worker route, not an
+explicit registry. The key is not a GUI/API token. Do not Run All or restart the
+running Kaggle model. Make a new disposable local workspace:
 
 ```powershell
 $taskProject = Join-Path $env:TEMP ('FreeCompute manual ' + [guid]::NewGuid().ToString('N'))
@@ -105,7 +108,7 @@ class CalculatorTests(unittest.TestCase):
         self.assertEqual(divide(8, 2), 4)
 '@ | Set-Content -Encoding UTF8 (Join-Path $taskProject 'test_calculator.py')
 $env:FREECOMPUTE_JOURNAL_DIR = Join-Path $env:TEMP ('FreeCompute manual ledger ' + [guid]::NewGuid().ToString('N'))
-.\.venv\Scripts\freecompute.exe --workspace $taskProject
+.\.venv\Scripts\freecompute.exe --config config.yaml --workspace $taskProject
 ```
 
 At `freecompute>` run `/status`, `/model`, `/workers`, `/models`, `/help`.
@@ -121,7 +124,8 @@ the actual test result and give a short final answer.
 Review and approve the exact edit and test command with `y`. Check live text,
 read/edit/run activities, actual `Ran 2 tests`/`OK`, and a single final answer.
 Run `/diff` and `/sessions`, copy the completed session ID, then `/exit`.
-Reopen with the same command/workspace, use `/resume <session-id>` and verify
+Reopen with the same command/workspace in the same PowerShell tab (keep
+`$taskProject` set), use `/resume <session-id>` and verify
 that completed effects/tests are not repeated. Run `/undo`, inspect the preview,
 answer `n`, and confirm the edit remains. Use `/new` before a separate long-text
 request; press Ctrl+C during generation and inspect `/queue` and cancellation
@@ -140,3 +144,20 @@ python tests/runtime/cli_release_acceptance.py
 This creates a fresh external snapshot/venv/workspace and leaves its evidence for
 review. It does not alter an existing project or silently enable fixture mode in
 the application.
+
+## Files changed in the final pass
+
+- CLI: `harness/cli/main.py`, `formatter.py`, `core_client.py`.
+- Configuration/package: `harness/config.py`, `harness/core/engine_config.py`,
+  `harness/config.sample.yaml`, `harness/__init__.py`, `pyproject.toml`, `.env.example`.
+- Acceptance/regressions: `tests/unit/test_cli_product.py`,
+  `tests/runtime/cli_fixture.py`, `tests/runtime/cli_release_acceptance.py`,
+  `tests/runtime/README.md`, `tests/security_scan.py`.
+- Documentation: `README.md`, `knowledgebase/README.md`, `V1_CLI_PRODUCT.md`,
+  `V1_RELEASE_READINESS.md`, `V1_REAL_KAGGLE_ACCEPTANCE.md`, `V2_ROADMAP.md`,
+  `V2_SYSTEM_ARCHITECTURE.md`, `GUI_AND_WEBSITE_DIRECTION.md`.
+
+Original unit files, scheduler/storage/sandbox/tool implementations, Kaggle
+notebooks and historical SDK experiments are preserved. Any user-specific
+private `config.yaml`, `.env`, temporary manual project and acceptance artifacts
+are excluded from Git/package inventory. The existing key value is unchanged.
