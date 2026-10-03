@@ -21,7 +21,7 @@ A disposable local forwarding listener was stopped before inference dispatch.
 Refresh marked the worker unreachable and the task stayed queued without an
 upstream POST. Restoring the route made the worker healthy and the queued task
 completed. This did not interrupt an active remote stream or restart Kaggle.
-Exact measurements and remaining cases are in the live acceptance ledger.
+Exact measurements and remaining boundaries are in the live acceptance ledger.
 
 Running cancellation was observed during the twelfth streamed reasoning event
 of a real long-response request. The local task became `cancelled` with
@@ -164,7 +164,7 @@ that does not promote every deterministic case to real-worker certification.
 **Historical:** Kaggle benchmarks and earlier Stage 1-3 acceptance remain dated
 evidence, not newly reproduced hardware results.
 
-## Files in this phase (relative to aa15fc9)
+## Historical files in the 2026-10-02 phase (relative to aa15fc9)
 
 Production changes (15):
 

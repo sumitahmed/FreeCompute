@@ -9,6 +9,7 @@ import threading
 import unittest
 
 from harness.core.client import CancellationToken
+from harness.core.engines import EngineFailure
 from harness.core.inference import AllocationUnavailable
 from harness.core.models import RemoteHealth, StreamChunk
 from harness.core.runtime_models import ModelProfile
@@ -256,6 +257,17 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertEqual(approvals, [])
         self.assertEqual(core.store.all("SELECT * FROM actions"), [])
         self.assertFalse((self.workspace / "blocked.txt").exists())
+
+    def test_empty_stream_packet_prevents_not_started_capacity_release(self):
+        def reply():
+            yield StreamChunk()
+            raise EngineFailure("rejection after streaming began", remote_not_started=True)
+        core = self.start(reply())
+        result = core.run(core.submit("short prompt", allowed_tools=[]))
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(core.inference.allocation()["state"], "quarantined")
+        saved = json.loads(core.store.one("SELECT response FROM inference_attempts")["response"])
+        self.assertEqual(saved["remote_outcome"], "unknown")
 
     def test_one_active_allocation_and_profile_change_refusal(self):
         entered, release = threading.Event(), threading.Event()

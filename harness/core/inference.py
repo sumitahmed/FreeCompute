@@ -116,9 +116,11 @@ class InferenceBroker:
         error = None
         remote_not_started = cancellation.is_cancelled
         received_bytes = 0
+        received_chunk = False
         stream_limit = min(MAX_STREAM_BYTES, max(8192, profile.reserved_completion * 32))
         try:
             for chunk in (() if remote_not_started else engine.stream(profile, messages, tools, cancellation)):
+                received_chunk = True
                 if cancellation.is_cancelled:
                     break
                 # Text/reasoning size must not depend on how the server splits packets.
@@ -169,7 +171,7 @@ class InferenceBroker:
                     if value:
                         self._stream_event(task, kind, value)
         except EngineFailure as exc:
-            error, remote_not_started = scrubber.scrub(exc), exc.remote_not_started and received_bytes == 0
+            error, remote_not_started = scrubber.scrub(exc), exc.remote_not_started and not received_chunk
         except Exception as exc:
             error = scrubber.scrub(exc)
         except KeyboardInterrupt:
