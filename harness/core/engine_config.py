@@ -33,7 +33,7 @@ def configured_engines(config, workspace):
         capabilities = frozenset().union(*(p.capabilities for p in models))
         key = config.resolve_api_key(connection.api_key_env) if connection.api_key_env else connection.api_key
         if connection.api_key_env and not key:
-            raise ValueError("Worker API-key environment variable is unset")
+            raise ValueError(f"Worker {connection.worker_id} API-key variable {connection.api_key_env} is unset; put it in .env or the process environment")
         scrubber.register_secret(key)
         scrubber.register_secret(connection.url)
         if connection.engine != "ComfyUI":

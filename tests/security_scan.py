@@ -6,6 +6,7 @@ Scans source files, notebooks (cells & outputs), config templates, and proposed 
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Tuple
@@ -121,17 +122,22 @@ def run_audit(root_dir: str = ".") -> int:
     all_findings = []
     total_files_scanned = 0
 
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Exclude ignored directories
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
-        for f in filenames:
-            if f == "security_scan.py":
-                continue
-            p = Path(dirpath) / f
-            total_files_scanned += 1
-            res = scan_file(p)
-            for rule, line_num, line, reason in res:
-                all_findings.append((p.relative_to(root), rule, line_num, line, reason))
+    # Inspect releasable files, not ignored private .env/state or generated GUI caches.
+    try:
+        inventory = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                                   capture_output=True, check=True)
+        paths = [root / p for p in inventory.stdout.decode("utf-8").split("\0") if p]
+    except (OSError, subprocess.CalledProcessError):
+        paths = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS | {"node_modules", "dist", "build"}]
+            paths.extend(Path(dirpath) / f for f in filenames if not f.startswith(".env") and f != "config.yaml")
+    for p in paths:
+        if p.name == "security_scan.py" or not p.is_file() or p.is_symlink():
+            continue
+        total_files_scanned += 1
+        for rule, line_num, line, reason in scan_file(p):
+            all_findings.append((p.relative_to(root), rule, line_num, line, reason))
 
     print(f"Scanned {total_files_scanned} files across repository.")
     print("-" * 72)
@@ -143,7 +149,8 @@ def run_audit(root_dir: str = ".") -> int:
 
     print(f"[ALERT] FOUND {len(all_findings)} POTENTIAL SECRET LEAKS:")
     for path, rule, line_num, line, reason in all_findings:
-        print(f"  • {path}:{line_num} [{rule}] ({reason}) -> {line}")
+        # Reporting a suspected leak must not itself disclose the matched credential.
+        print(f"  • {path}:{line_num} [{rule}] ({reason}) [matched content omitted]")
     print("=" * 72)
     return 1
 

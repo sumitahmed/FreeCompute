@@ -1,136 +1,163 @@
 # FreeCompute
 
-Run open-source LLMs and image models on free cloud GPUs, controlled from your local terminal.
+A local CLI coding agent powered by configurable inference workers. FreeCompute
+owns file tools, command execution, approvals, durable sessions, diffs and undo on
+your computer. A Kaggle, local or private worker supplies model inference.
 
-[![Kaggle Notebook](https://img.shields.io/badge/Kaggle-Run%20on%20Dual%20T4-20BEFF?logo=kaggle&logoColor=white)](https://www.kaggle.com/code/sumitahmed3/relayforge)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Tests: Passing](https://img.shields.io/badge/Tests-42%2F42%20Passing-success.svg)](tests/)
+V1 is a **CLI release candidate**. GUI/dashboard work is deferred and abandoned
+for V1. Version `0.1.0` remains beta pending the user's final manual acceptance;
+this repository does not claim a published production release.
 
----
+## Install and launch
 
-## Why this exists
+Python **3.10+** is required; this pass was executed on Windows/Python 3.12.
+From a checkout, in PowerShell:
 
-Kaggle gives everyone **30 hours per week of free dual Tesla T4 GPUs (30 GB total VRAM)**. Almost nobody actually takes advantage of it.
-
-FreeCompute bridges that free compute to your local terminal. Instead of frying your laptop running heavy models locally or paying monthly API fees:
-
-- The model runs on Kaggle's dual GPUs (Qwen, GLM, DeepSeek, or any unfiltered/abliterated GGUF from Hugging Face).
-- A secure Cloudflare tunnel routes inference back to your machine.
-- Your code, file edits, bash commands, and git history stay strictly on your local machine.
-- The remote server is just an untrusted inference box. It never touches your local files directly.
-- The agent asks for your confirmation before writing code or running shell commands, and you can revert any mistake instantly with `/undo`.
-
----
-
-## Quickstart
-
-### 1. Launch the Remote GPU Server
-
-1. Open the [FreeCompute Kaggle Notebook](https://www.kaggle.com/code/sumitahmed3/relayforge) (or upload `kaggle/universal_dual_gpu_server.ipynb`).
-2. Set Accelerator to **GPU T4 x2** and toggle Internet to **ON**.
-3. Run all cells. Once loaded, it prints your tunnel URL:
-   ```text
-   ======================================================================
-     FREECOMPUTE REMOTE GPU SUPERVISOR ONLINE
-   ======================================================================
-     Public URL : https://your-tunnel-url.trycloudflare.com
-     API Key    : your-bearer-token
-   ======================================================================
-   ```
-
-### 2. Install FreeCompute Locally
-
-```bash
-git clone https://github.com/sumitahmed/FreeCompute.git
-cd FreeCompute
-
+```powershell
 python -m venv .venv
-
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# Linux / macOS:
-source .venv/bin/activate
-
-pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\freecompute.exe --help
 ```
 
-### 3. Connect
+Activation is optional. On macOS/Linux use `.venv/bin/python` and
+`.venv/bin/freecompute`. The default installation does not require OpenHands,
+Node, a browser service or a GUI token.
 
-```bash
-freecompute --remote-url "https://your-tunnel-url.trycloudflare.com" --api-key "your-bearer-token"
+Create a private `.env` if it does not exist, or update your existing one:
+
+```dotenv
+FREECOMPUTE_REMOTE_URL=https://xxxx.trycloudflare.com
+FREECOMPUTE_API_KEY=your-session-api-key-from-kaggle
+FREECOMPUTE_MODEL_ALIAS=qwen3.8-27b-huihui-abliterated-q4
+FREECOMPUTE_TRANSPORT=cloudflare
 ```
 
-*(You can also drop these into `.env` so you just run `freecompute` directly without flags).*
+Use your actual current worker URL, exact advertised model alias and the same
+private bearer key enabled in the notebook. `.env` and `config.yaml` are ignored
+by Git. Keep credentials out of command arguments and notebook source.
 
----
+Choose an existing disposable project for the first test:
 
-## Tested Models (Kaggle Dual T4 / 30 GB VRAM)
+```powershell
+.\.venv\Scripts\freecompute.exe --workspace "C:\path\to\disposable-project"
+```
 
-The notebook splits layers 50/50 across both T4 GPUs. You can swap any GGUF from Hugging Face by updating `CONFIG` in Cell 2:
+Enter a coding request. Read each proposed edit/command and answer `y` only when
+you approve it; Enter, `n`, EOF and broken input deny. `--prompt "your task"` runs
+one task using the same approval flow and exits nonzero unless the task completes.
+Closing the CLI does not stop a remote GPU session.
 
-| Model | Size / Quant | VRAM | Context | Notes | Hugging Face |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Qwen 3.8-27B Abliterated** *(Default)* | 27B Q4_K_M | ~19.5 GB | **65,536** | Uncensored, great reasoning and coding. Handles large repos without refusals. | [Link](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF) |
-| **Qwen 2.5 Coder 32B Instruct** | 32B Q4_K_M | ~22.0 GB | **48,000** | Top-tier open coding model for complex refactoring. | [Link](https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF) |
-| **DeepSeek-R1 Distill Qwen 32B** | 32B Q4_K_M | ~22.0 GB | **32,768** | Strong reasoning and math for difficult algorithms. | [Link](https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF) |
-| **Mistral Small 24B Instruct 2501** | 24B Q4_K_M | ~16.5 GB | **32,768** | Fast generation, low latency. | [Link](https://huggingface.co/bartowski/mistral-small-24b-instruct-2501-GGUF) |
-| **Qwen 2.5 Coder 14B / 7B** | 14B/7B Q8 | ~10–14 GB | **65,536** | Fast alternative; also fits single-GPU Colab free tier. | [Link](https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF) |
+## Kaggle worker
 
----
+Upload **`kaggle/freecompute_dual_gpu_server.ipynb`** from this checkout.
+`kaggle/universal_dual_gpu_server.ipynb` is its synchronized wrapper. Historical
+proof notebooks are evidence, not the current authenticated worker.
 
-## CLI Commands
+1. Set accelerator **GPU T4 x2**, Internet **ON**, Persistence **None**; no inputs
+   or datasets are required by this notebook. Provider availability/quota varies.
+2. Add and enable the private Kaggle Secret `FREECOMPUTE_API_KEY` matching your
+   local key. Default Cloudflare mode does not require a Tailscale auth key.
+3. Run code cells **1–8 individually and in order**. Stop on any error. **Do not
+   Run All or Save & Run All**; the last code cell is guarded shutdown.
+4. Cell 4 must verify the downloaded engine and both T4 GPUs, cell 6 the healthy
+   supervisor, and cell 8 `WORKER READY FOR LOCAL ACCEPTANCE`. Copy cell 7's URL
+   into your private local configuration. A notebook ready marker alone does
+   not prove connectivity or model inference from your computer.
+5. While FreeCompute uses the worker, keep Kaggle running and do not rerun setup,
+   model or transport cells. After work ends, use guarded code cell 9 and Kaggle
+   **Stop Session** to end GPU allocation.
 
-Inside `freecompute>`:
+The pinned Ubuntu 22.04/SM75 engine artifact currently expires on **2026-10-10**;
+on expiry its artifact identity/checksums must be refreshed before a new session.
+Cloudflare Quick Tunnels have a documented SSE limitation. One historical live
+session passed streaming; verify your actual endpoint rather than assuming all
+Quick Tunnels will stream. See [the deployment and live evidence ledger](knowledgebase/V1_REAL_KAGGLE_ACCEPTANCE.md).
+
+## Workers, models and configuration
+
+For a registry with explicit resource identity, copy
+[`harness/config.sample.yaml`](harness/config.sample.yaml), update its worker URL,
+model/profile declarations and workspace, then run:
+
+```powershell
+.\.venv\Scripts\freecompute.exe --config config.yaml
+```
+
+Precedence is defaults → YAML → `.env` beside the YAML → `.env` in the current
+directory → process environment → CLI flags. `FREECOMPUTE_*` names beat legacy
+`RELAYFORGE_*`/`HARNESS_*` aliases within the same layer. `api_key_env` resolves
+against those dotenv files and the process environment without copying secrets
+into worker declarations or durable state.
+
+`--remote-url`, the legacy `--api-key` flag and `--engine` configure the single
+worker route; they are rejected with an explicit registry to avoid silently
+ignoring them. Edit `workers[].url/engine/api_key_env` for registry routes.
+`/model <profile-id> [worker-id]` changes new-task defaults for the current CLI
+process. Queued tasks retain their submitted profile/worker route. Restart
+defaults come from configuration, while `/resume` uses the task's recorded route.
+
+llama.cpp supports the accepted text/tool protocol. Generic OpenAI-compatible
+workers use text-only capabilities unless `code_tools` is explicitly declared
+and that endpoint supports the tool protocol. ComfyUI is image-only and uses the
+existing fixed workflow; arbitrary checkpoint/timeout switching is unsupported.
+Declared context and configured verification labels are not fresh measurements.
+
+## CLI commands
 
 | Command | Action |
-| :--- | :--- |
-| `<task description>` | Run pair-programming task. Agent inspects files, drafts diffs, and requests approval. |
-| `/status` | Check Kaggle container age, remaining time in 12h session, and dual-GPU VRAM usage. |
-| `/quota <hours>` | Save your weekly Kaggle GPU quota balance (e.g. `/quota 22.5`). |
-| `/diff` | Show colorized diff of the last file modified by the agent. |
-| `/undo` | Rollback the last file change immediately. |
-| `/skills` | List installed skills and slash commands. |
-| `/image <prompt>` | Send prompt to remote ComfyUI instance (if configured). |
-| `/model` | Show active model, context length, and remote URL. |
-| `/clear` | Clear terminal. |
-| `exit` | Quit the CLI session. |
+| --- | --- |
+| `/help` | Commands; `/help recovery` shows explicit reconciliation operations |
+| `/status` | Refresh health/GPU observations; label local timer/quota estimates |
+| `/model [profile] [worker]` | Show/select the route for new tasks |
+| `/models`, `/workers` | Configured profiles and worker observations/held capacity |
+| `/queue` | Durable queued/running/unknown requests |
+| `/sessions`, `/resume <id>` | Saved sessions and receipt-based recovery; unique ID prefixes work |
+| `/new` | New conversation on the next prompt |
+| `/skills` | Discovered local skills; registered skill slash commands also work |
+| `/diff`, `/undo` | Recorded diff and approved conflict-checked snapshot restoration |
+| `/cancel [task-id]` | Cancel queued work; use Ctrl+C during active synchronous inference |
+| `/clear`, `/exit` | Clear the terminal or leave the CLI |
+| `/image <prompt>` | Configured ComfyUI image workflow |
 
----
+Recovery commands include `/run-next`, `/actions`, `/reconcile`,
+`/reconcile-inference`, `/quota` and the legacy `/image-server`. The CLI is
+synchronous; queued work requires explicit `/run-next` or `/resume`, not a hidden
+background daemon. Unknown commands never become inference requests.
 
-## Adding Custom Skills
+## Safety and limitations
 
-Drop a folder inside `./skills/<skill-name>/` with a `SKILL.md`:
+The remote model can propose tools; only the local Core validates and executes
+them. File tools block protected paths, traversal and symlink/reparse escapes.
+Approved shell commands run with your user privileges and are **not an OS
+sandbox**. Review the command and working directory before approval.
 
-```markdown
----
-name: database-designer
-description: Designs clean SQL schemas and migrations
-slash_command: /db
----
+Prompts, selected file contents and tool results are sent to the inference
+provider. Local tool authority, SQLite journals, receipts and snapshot artifacts
+remain local. Output uses registered-secret redaction plus pattern matching;
+this is not a guarantee against every unregistered secret in arbitrary text.
 
-# Database Designer
-When designing database tables:
-1. Always add created_at and updated_at timestamps.
-2. Use UUIDv7 or BIGINT for primary keys.
-3. Write rollback SQL scripts for all migrations.
-```
+Cancellation distinguishes requested/local stop from remote acknowledgement.
+Closing a stream does not prove that a GPU stopped. Unknown remote outcomes hold
+capacity across restart until explicit operator idle reconciliation. Never
+reconcile merely because utilization is low or `/health` succeeds.
 
-Trigger it directly in the REPL using `/db <task>` or `/skill database-designer`.
+Context budgets use a conservative UTF-8-byte/framing estimate. The declared
+65,536-token profile has not been fully input-capacity certified. GPU availability,
+quota, throughput and context behavior depend on the actual model/worker.
 
----
+## Verification
 
-## Testing
-
-```bash
-# Run unit tests
+```powershell
 python -m unittest discover -s tests/unit -p "test_*.py"
-
-# Secret leak scan
 python tests/security_scan.py
+python tests/runtime/cli_release_acceptance.py
 ```
 
----
+The last command builds a wheel from a fresh external source snapshot, installs
+it in a clean environment and runs the installed CLI against explicit loopback
+fixtures. Inference is deterministic test data; file edits, approvals, tests,
+restart/resume and undo are real local effects. It never contacts Kaggle.
 
-## License
-
-[Apache 2.0](LICENSE)
+See [V1 CLI product behavior](knowledgebase/V1_CLI_PRODUCT.md),
+[release-readiness evidence and manual checks](knowledgebase/V1_RELEASE_READINESS.md),
+and the [historical real Kaggle acceptance](knowledgebase/V1_REAL_KAGGLE_ACCEPTANCE.md).

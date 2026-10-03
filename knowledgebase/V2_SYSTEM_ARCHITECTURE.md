@@ -1,4 +1,16 @@
+
 # V2 system architecture
+
+## Current V1 boundary — 2026-10-03
+
+The V1 product is CLI → Core → native agent runtime → durable queue/scheduler →
+worker/model registry → llama.cpp/compatible text engines or image-only ComfyUI.
+Tool authority, approvals, journals, receipts and undo stay local. The final CLI
+branch `v1/cli-release` starts at accepted backend `755e944`; it includes no GUI,
+HTTP API or frontend additions from the abandoned `v1/gui` experiment. GUI is
+**DEFERRED / ABANDONED FOR V1**. The broader designs below remain historical
+proposals, not shipped CLI features. See [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md)
+and [V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md) for current behavior/evidence.
 
 Updated, 2026-10-02. The user authorized the narrow native driver, Stage 3 runtime and subsequently the bounded V1 engine/worker/queue backend. Broader delegation, advanced scheduling, GUI and daemon architecture below remains proposed. The pinned SDK was rejected in [FOUNDATION_DECISION.md](FOUNDATION_DECISION.md); historical Stage 3 acceptance is in [STAGE3_LOCAL_RUNTIME.md](STAGE3_LOCAL_RUNTIME.md), and current V1 evidence is in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md).
 

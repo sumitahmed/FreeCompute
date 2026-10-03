@@ -1,5 +1,14 @@
 # GUI and landing/documentation direction
 
+## Current product decision — 2026-10-03
+
+GUI is **DEFERRED / ABANDONED FOR V1**. The user chose the CLI as the V1 product
+and abandoned the separate `v1/gui` experiment. Its frontend/API code is not part
+of `v1/cli-release`, which begins at accepted backend `755e944`. No GUI, desktop,
+website, API server, installer or deployment work is authorized by the final CLI
+pass. The design material below is preserved as historical research for a later
+decision. Current handoff: [V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md).
+
 Research/design only, 2026-10-02. No GUI, website, screenshots, deployment or frontend scaffold was created.
 
 ## Lessons from inspected products

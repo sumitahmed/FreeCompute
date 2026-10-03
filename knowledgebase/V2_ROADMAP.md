@@ -1,5 +1,18 @@
 # V2 staged roadmap and review decisions
 
+## Current V1 product decision — 2026-10-03
+
+V1 ships as the CLI/Core/agent-runtime/queue/worker-registry product. GUI is
+**DEFERRED / ABANDONED FOR V1**. The prior GUI permission below is historical;
+the final CLI pass starts at accepted backend `755e944` on local `v1/cli-release`
+and does not import frontend/API/dashboard code. Current CLI behavior and
+verification are in [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md) and
+[V1_RELEASE_READINESS.md](V1_RELEASE_READINESS.md). Push/release require the
+user's separate manual acceptance. Later GUI, Rust, subagents, automation,
+advanced memory/scheduling and hosted services are not V1 blockers.
+
+Historical live-acceptance handoff (its GUI direction is superseded above):
+
 Subsequent V1 real-acceptance preparation is authorized separately from the
 bounded backend milestone below. The notebook preflight fixes and exact manual
 procedure are in [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md).

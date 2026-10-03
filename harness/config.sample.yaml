@@ -1,29 +1,32 @@
-# harness/config.sample.yaml — Sample configuration for local coding harness
-# Copy to config.yaml and update with your Kaggle session details.
-
-# URL of your Kaggle supervisor endpoint:
-# If using Tailscale: http://100.x.y.z:8081
-# If using Cloudflare: https://xxxx.trycloudflare.com
-# If testing locally: http://127.0.0.1:8081
-remote_url: "http://127.0.0.1:8081"
-
-# The secret Bearer token configured in the Kaggle notebook
-api_key: ""
-
-# Registered model alias in llama-server
-model_alias: "qwen3.8-27b-huihui-abliterated-q4"
-
-# Maximum context window (dual T4 proven at 65,536 tokens)
-max_context_tokens: 65536
-
-# Timeout for long-running model prefill/generation in seconds
+# Copy to ignored config.yaml and edit the existing project/worker endpoint.
+# Credentials belong in private .env/process environment, not this YAML.
+workspace_root: "."
+# Legacy quota/undo compatibility files only. Authoritative SQLite state is in
+# the per-user FreeCompute/workspaces directory outside the project/OneDrive.
+journal_dir: ".qwen_harness"
+selected_profile: kaggle-qwen-historical-64k
+selected_worker: kaggle-qwen
+transport: cloudflare
 request_timeout_seconds: 900
 
-# Transport bridge mode: 'tailscale' (recommended) or 'cloudflare'
-transport: "tailscale"
+model_profiles:
+  - profile_id: kaggle-qwen-historical-64k
+    model: qwen3.8-27b-huihui-abliterated-q4
+    engine: llama.cpp
+    capabilities: [text, code_tools]
+    context_capacity: 65536 # Declared allocation, not full input-capacity certification.
+    reserved_completion: 2048
+    resource_requirements: [gpu0, gpu1]
+    verification: unverified # Configured label; do not promote without evidence.
 
-# Local workspace path (authoritative source of truth)
-workspace_root: "."
-
-# Local persistent state directory
-journal_dir: ".qwen_harness"
+workers:
+  - worker_id: kaggle-qwen
+    location: kaggle
+    engine: llama.cpp
+    # Replace privately with the current Cloudflare/Tailscale/local supervisor URL.
+    url: http://127.0.0.1:8081
+    api_key_env: FREECOMPUTE_API_KEY
+    profiles: [kaggle-qwen-historical-64k]
+    concurrency_limit: 1
+    resource_pool: kaggle-dual-t4
+    resources: [gpu0, gpu1]

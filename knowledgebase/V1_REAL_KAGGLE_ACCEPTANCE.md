@@ -167,8 +167,9 @@ observations. A local ready marker does not prove Windows-to-Kaggle connectivity
 
 Codex will read the private bearer locally without printing it, register it with
 the scrubber, and set `FREECOMPUTE_API_KEY` in the acceptance process. Explicit
-worker `api_key_env` reads process environment, not the CLI loader's `.env` map;
-do not assume `.env` alone populates explicit worker credentials. Populate an
+worker `api_key_env` read process environment only during this historical run.
+The later CLI release pass resolves these variables from config-side/cwd `.env`
+and then process environment; see [V1_CLI_PRODUCT.md](V1_CLI_PRODUCT.md). Populate an
 ignored local config from these declarations with the returned URL:
 
 ```yaml
