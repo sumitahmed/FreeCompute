@@ -85,6 +85,7 @@ class LocalAPITests(unittest.TestCase):
     def test_authentication_cookie_csrf_and_logout(self):
         self.assertEqual(self.request("GET", "sessions", auth=False)[0], 401)
         self.assertEqual(self.request("POST", "auth/session", {"token": "incorrect-local-token-value"}, auth=False)[0], 401)
+        self.assertEqual(self.request("POST", "auth/session", {"token": "invalid-unicode-credential-\u00e9"}, auth=False)[0], 401)
         self.login()
         self.assertIn("HttpOnly", self.request("POST", "auth/session", {"token": self.server.token})[2]["Set-Cookie"])
         headers = {"Cookie": self.cookie, "Origin": self.server.origin}
@@ -111,6 +112,7 @@ class LocalAPITests(unittest.TestCase):
         profiles = self.request("GET", "profiles")[1]
         self.assertEqual(len(workers), 2)
         self.assertTrue(all(w["last_seen"] and w["observed_resources"]["source"].startswith("SIMULATED") for w in workers))
+        self.assertTrue(all(w["observed_at"] for w in workers))
         self.assertEqual({p["profile_id"] for p in profiles}, {"demo-code", "demo-chat"})
         self.assertEqual(self.request("POST", "defaults", {"profile_id": "demo-code", "worker_id": "demo-chat-worker"})[0], 400)
         self.assertEqual(self.request("POST", "defaults", {"profile_id": "demo-chat", "worker_id": "demo-chat-worker"})[0], 200)
@@ -249,6 +251,56 @@ class LocalAPITests(unittest.TestCase):
         newer = self.submit(sid=task["session_id"], request_id="newer")
         self.until(lambda: self.task_state(newer["id"], "completed"))
         self.assertEqual(self.request("POST", f"tasks/{task['id']}/resume", {})[0], 409)
+
+    def test_second_http_submission_waits_for_existing_core_dispatch(self):
+        for engine in self.server.core.registry.engines.values():
+            engine.delay = 0.001
+        first = self.submit("[demo:long]", request_id="first-running")
+        self.until(lambda: self.server.core.views.leases())
+        second = self.submit("Second queued fixture", request_id="second-queued")
+        queue = self.request("GET", "queue")[1]
+        self.assertEqual(len(queue["leases"]), 1)
+        self.assertEqual(queue["leases"][0]["task_id"], first["id"])
+        self.assertEqual(next(job for job in queue["jobs"] if job["task_id"] == first["id"])["assigned_worker"], "demo-worker")
+        self.assertIsNone(self.server.core.store.one("SELECT id FROM inference_attempts WHERE task_id=?", (second["id"],)))
+        self.until(lambda: self.task_state(first["id"], "completed"), timeout=12)
+        self.until(lambda: self.task_state(second["id"], "completed"))
+        self.assertFalse(self.server.core.views.leases())
+
+    def test_event_paging_is_bounded_and_replay_has_no_gap(self):
+        sid = self.session()
+        for index in range(225):
+            with self.server.core.store.transaction() as db:
+                event = self.server.core.store.event(db, sid, None, "fixture.marker", {"index": index})
+            self.server.core._publish(event)
+        first = self.request("GET", f"sessions/{sid}/events")[1]
+        self.assertEqual(len(first["events"]), 200)
+        self.assertTrue(first["has_more"])
+        second = self.request("GET", f"sessions/{sid}/events?after={first['cursor']}")[1]
+        self.assertFalse(second["has_more"])
+        self.assertEqual([e["sequence"] for e in first["events"] + second["events"]], list(range(1, 227)))
+
+    def test_service_restart_does_not_grant_pending_approval(self):
+        task = self.submit("[demo:edit]")
+        approval = self.until(self.pending)
+        old_token = self.server.token
+        self.server.close()
+        self.server = None
+        self.start()
+        self.assertNotEqual(self.server.token, old_token)
+        self.assertIn("//", (self.workspace / "calculator.py").read_text())
+        self.assertFalse(self.request("GET", "approvals")[1])
+        self.assertEqual(self.decision(approval)[0], 409)
+        events = self.server.core.views.events(task["session_id"])
+        self.assertTrue(any(e["kind"] == "approval.decided" and e["payload"]["decision"] == "denied" for e in events))
+
+    def test_http_projection_scrubs_registered_local_credentials(self):
+        task = self.submit()
+        self.until(lambda: self.task_state(task["id"], "completed"))
+        self.server.core._event(self.server.core.task(task["id"]), "fixture.diagnostic", {"credential": self.server.token})
+        values = self.request("GET", f"sessions/{task['session_id']}/events")[1]
+        self.assertNotIn(self.server.token, json.dumps(values))
+        self.assertEqual(values["events"][-1]["payload"]["credential"], "[REDACTED_SECRET]")
 
 
 if __name__ == "__main__":
