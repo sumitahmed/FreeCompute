@@ -44,13 +44,11 @@ def configured_engines(config, workspace):
             adapter = OpenAICompatibleEngine(OpenAICompatibleProvider(connection.url, key, models[0].model, connection.timeout_seconds or config.request_timeout_seconds,
                                                                      code_tools="code_tools" in capabilities))
         else:
-            if key:
-                raise ValueError("The existing ComfyUI transport has no bearer-auth contract; use an appropriately protected endpoint")
             if connection.timeout_seconds is not None:
                 raise ValueError("The existing ComfyUI workflow keeps its 180-second polling limit; custom timeout configuration is unsupported")
             if len({profile.model for profile in models}) != 1:
                 raise ValueError("One ComfyUI attachment uses one existing workflow/model identity; arbitrary checkpoint switching is unsupported")
-            adapter = ComfyUIEngine(ComfyUIProvider(connection.url, workspace_root=workspace), model_identity=models[0].model)
+            adapter = ComfyUIEngine(ComfyUIProvider(connection.url, workspace_root=workspace, api_key=key), model_identity=models[0].model)
         worker = Worker(connection.worker_id, connection.location, connection.engine, capabilities,
                         concurrency_limit=connection.concurrency_limit, resource_pool=connection.resource_pool, resources=connection.resources)
         attachments.append((worker, models, adapter))
@@ -71,7 +69,7 @@ def configured_engines(config, workspace):
         profiles[image.profile_id] = image
         attachments.append((Worker("comfy-worker", "remote-supervisor", "ComfyUI", image.capabilities,
                                    resource_pool="attached-default", resources=frozenset({"inference"})),
-                            [image], ComfyUIEngine(ComfyUIProvider(config.image_server_url, workspace_root=workspace))))
+                            [image], ComfyUIEngine(ComfyUIProvider(config.image_server_url, workspace_root=workspace, api_key=config.image_api_key))))
     selected = config.selected_profile or next((p.profile_id for p in profiles.values() if "text" in p.capabilities), next(iter(profiles)))
     if selected not in profiles:
         raise ValueError("Selected model profile is not configured")

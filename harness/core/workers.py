@@ -13,6 +13,7 @@ class WorkerRegistry:
             raise ValueError("Worker health TTL must be positive")
         self.store, self.health_ttl, self.clock = store, health_ttl, clock
         self.engines, self.trusted_embeddings = {}, set()
+        self.telemetry_settings, self.connected_since = {}, {}
         with store.transaction() as db:
             db.execute("UPDATE workers SET health='unverified',checked_at=NULL")
 
@@ -70,6 +71,7 @@ class WorkerRegistry:
             db.execute("DELETE FROM worker_profiles WHERE worker_id=?", (worker.worker_id,))
             db.executemany("INSERT INTO worker_profiles VALUES(?,?)", [(worker.worker_id, p.profile_id) for p in profiles])
         self.engines[worker.worker_id] = engine
+        self.connected_since.pop(worker.worker_id, None)
         if trusted_embedding:
             self.trusted_embeddings.add(worker.worker_id)
             self.observe(worker.worker_id, "healthy", {"source": "trusted in-process declaration"})
@@ -91,11 +93,22 @@ class WorkerRegistry:
     def observe(self, worker_id, health, resources=None):
         if health not in {"healthy", "unhealthy", "unreachable", "unverified", "unconfigured"}:
             health = "unhealthy"
+        from harness.telemetry.models import normalize
+        resources = dict(resources or {})
+        if health == "healthy":
+            self.connected_since.setdefault(worker_id, self.clock())
+        age = max(0, self.clock() - self.connected_since[worker_id]) if worker_id in self.connected_since else None
+        worker = self.worker(worker_id)
+        try:
+            resources['telemetry'] = normalize(dict(resources, status=health), worker_id=worker_id, provider=worker.location,
+                connected_age=age, now=self.clock(), **self.telemetry_settings.get(worker_id, {})).to_dict()
+        except (TypeError, ValueError, OverflowError):
+            resources['telemetry'] = normalize({}, worker_id=worker_id, provider=worker.location, now=self.clock()).to_dict()
         with self.store.transaction() as db:
             if not db.execute("SELECT 1 FROM workers WHERE id=?", (worker_id,)).fetchone():
                 raise ValueError("Unknown worker")
             db.execute("UPDATE workers SET health=?,last_seen=CASE WHEN ?='healthy' THEN ? ELSE last_seen END,checked_at=?,observation=? WHERE id=?",
-                       (health, health, timestamp(), self.clock(), encode(resources or {}), worker_id))
+                       (health, health, timestamp(), self.clock(), encode(resources), worker_id))
 
     def refresh(self, worker_id):
         engine = self.engine(worker_id)
@@ -105,6 +118,7 @@ class WorkerRegistry:
                 return None
             health = engine.get_health()
             self.observe(worker_id, health.status, health.raw)
+            health.raw['telemetry'] = json.loads(self.store.one("SELECT observation FROM workers WHERE id=?", (worker_id,))['observation'])['telemetry']
             return health
         except Exception as exc:
             self.observe(worker_id, "unreachable", {"error": scrubber.scrub(exc)})

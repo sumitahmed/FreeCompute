@@ -55,7 +55,7 @@ class CoreService:
             self._running_task_id = None
             self.cancellation_token = CancellationToken()
             self.driver = driver or NativeAgentDriver()
-            self.skills = skill_manager or SkillManager(str(self.store.workspace))
+            self.skills = skill_manager or SkillManager(str(self.store.workspace), include_bundled=True)
             self.prompt_builder = PromptBuilder(skill_manager=self.skills) if system_prompt is None else PromptBuilder(system_prompt, self.skills)
             self.artifacts = ArtifactManager(self.store)
             self.tools = ToolRegistry(str(self.store.workspace), skill_manager=self.skills)
@@ -74,6 +74,8 @@ class CoreService:
             self.current_session_id = None
             self.quota = self.session_tracker = self.image_provider = None
             self.image_profile_id = None
+            self.image_worker_id = None
+            self.image_api_key = ""
             self.legacy_undo = None
             for event in self.store.recover():
                 self._publish(event)
@@ -103,9 +105,13 @@ class CoreService:
         service = cls(config.workspace_root, engine, profile, worker=worker, attachments=attachments,
                       selected_worker=config.selected_worker or None)
         try:
-            for _, profiles, adapter in attachments:
+            for connection in config.workers:
+                service.registry.telemetry_settings[connection.worker_id] = dict(configured_limit=connection.session_limit_seconds, no_deadline=connection.session_has_no_deadline)
+            service.image_api_key = config.image_api_key
+            for attached_worker, profiles, adapter in attachments:
                 if isinstance(adapter, ComfyUIEngine):
                     service.image_provider, service.image_profile_id = adapter.provider, profiles[0].profile_id
+                    service.image_worker_id = attached_worker.worker_id
                     break
             service.session_tracker = SessionTracker()
             # Preserve the existing quota ledger location; it is not task authority.
@@ -486,21 +492,50 @@ class CoreService:
         return scrubber.structured(rows)
 
     def set_image_endpoint(self, value):
-        parsed = urlsplit(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise ValueError("Image endpoint must be HTTP(S) without embedded credentials")
+        from harness.config import WorkerConnection
+        from harness.providers.comfyui import ComfyUIProvider
+        WorkerConnection.validate_url(value)
         if self._run_lock.locked() or self.inference.allocation()["state"] != "idle":
             raise ValueError("Resolve the active/uncertain allocation before changing the image endpoint")
-        if not self.image_provider:
-            raise ValueError("Image provider is not configured in this core composition")
         scrubber.register_secret(value)
-        self.image_provider.server_url = value.rstrip("/")
+        key = getattr(self.image_provider, "api_key", self.image_api_key)
+        provider = ComfyUIProvider(value, workspace_root=str(self.store.workspace), api_key=key)
         if self.image_profile_id:
-            for row in self.registry.candidates(self.image_profile_id):
-                adapter = self.registry.engine(row["id"])
-                if isinstance(adapter, ComfyUIEngine) and adapter.provider is self.image_provider:
-                    profiles = [self.registry.profile(p["profile_id"]) for p in self.store.all("SELECT profile_id FROM worker_profiles WHERE worker_id=?", (row["id"],))]
-                    self.registry.attach(self.registry.worker(row["id"]), profiles, ComfyUIEngine(self.image_provider, model_identity=adapter.model_identity))
+            row = self.registry.candidates(self.image_profile_id, self.image_worker_id)[0]
+            adapter = self.registry.engine(row["id"])
+            profiles = [self.registry.profile(p["profile_id"]) for p in self.store.all("SELECT profile_id FROM worker_profiles WHERE worker_id=?", (row["id"],))]
+            self.registry.attach(self.registry.worker(row["id"]), profiles, ComfyUIEngine(provider, model_identity=adapter.model_identity))
+            self.image_worker_id = row["id"]
+        else:
+            profile = ModelProfile("comfy-image", "comfy-worker", "ComfyUI-default", "ComfyUI", frozenset({"image_gen"}))
+            worker = Worker("comfy-worker", "remote-supervisor", "ComfyUI", profile.capabilities,
+                            resource_pool=self.worker.resource_pool or self.worker.worker_id, resources=self.worker.resources)
+            self.registry.attach(worker, [profile], ComfyUIEngine(provider))
+            self.image_profile_id, self.image_worker_id = profile.profile_id, worker.worker_id
+        self.image_provider = provider
+
+    def connect_image_worker(self, value):
+        self.set_image_endpoint(value)
+        self.registry.refresh(self.image_worker_id)
+        row = next(w for w in self.list_workers() if w["worker_id"] == self.image_worker_id)
+        return {"worker_id": row["worker_id"], "status": row["health"], "error": row["observed_resources"].get("error", "")}
+
+    def select_image_model(self, profile_id, worker_id=None):
+        profile = self.registry.profile(profile_id)
+        if "image_gen" not in profile.capabilities:
+            raise ValueError("Choose an image-capable profile with /image-model")
+        if self._run_lock.locked():
+            raise ValueError("Finish the active task before changing the image route")
+        candidates = self.registry.candidates(profile_id, worker_id)
+        if not candidates:
+            raise ValueError("Selected worker cannot serve this image profile")
+        adapter = self.registry.engine(candidates[0]["id"])
+        if not isinstance(adapter, ComfyUIEngine):
+            raise ValueError("This image route requires a supported ComfyUI workflow")
+        self.image_profile_id, self.image_worker_id, self.image_provider = profile_id, candidates[0]["id"], adapter.provider
+
+    def image_model_info(self):
+        return dict(self.registry.profile(self.image_profile_id).to_dict(), selected_worker=self.image_worker_id) if self.image_profile_id else None
 
     def get_health(self):
         worker_id = self.selected_worker or next((r["id"] for r in self.registry.candidates(self.profile.profile_id)), self.worker.worker_id)
@@ -652,10 +687,11 @@ class CoreService:
                             resource_pool=self.worker.resource_pool or self.worker.worker_id, resources=self.worker.resources)
             self.registry.attach(worker, [profile], ComfyUIEngine(self.image_provider), trusted_embedding=self.worker.location == "fixture")
             self.image_profile_id = profile.profile_id
+            self.image_worker_id = worker.worker_id
         profile_id = self.profile.profile_id if "image_gen" in self.profile.capabilities else self.image_profile_id
         profile = self.registry.profile(profile_id)
         task_id = self.sessions.submit(prompt, profile, "Image generation", [], [], operation="image",
-                                      requested_worker=self.selected_worker if profile_id == self.profile.profile_id else None)
+                                      requested_worker=self.selected_worker if profile_id == self.profile.profile_id else self.image_worker_id)
         return self._execute_image_task(task_id)
 
     def _execute_image_task(self, task_id):

@@ -30,6 +30,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
     "websockets>=12.0",
+    "prompt-toolkit>=3.0.48,<4",
+    "rich>=13.9,<15",
 ]
 
 [project.optional-dependencies]
@@ -47,3 +49,8 @@ exclude = ["harness.experiments*"]
 
 [tool.setuptools.package-data]
 harness = ["config.sample.yaml"]
+
+[tool.setuptools.data-files]
+"share/freecompute/skills/code-reviewer" = ["skills/code-reviewer/SKILL.md"]
+"share/freecompute/skills/web-researcher" = ["skills/web-researcher/SKILL.md"]
+"share/freecompute/skills/neetcode-solver" = ["skills/neetcode-solver/SKILL.md"]

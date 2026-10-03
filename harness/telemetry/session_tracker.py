@@ -21,14 +21,13 @@ def format_duration(seconds: float) -> str:
 
 
 class SessionTracker:
-    MAX_KAGGLE_SESSION_SECONDS = 43200.0  # 12.0 hours
-
     def __init__(self):
         self.connected_start_time: Optional[float] = None
         self.last_container_uptime_seconds: Optional[float] = None
         self.last_sync_timestamp: Optional[float] = None
         self.is_connected = False
         self.session_age_source = "unknown"
+        self.session_limit_seconds = None
 
     def mark_connected(self):
         """Record the start of active local harness connection."""
@@ -45,6 +44,8 @@ class SessionTracker:
         self.mark_connected()
         self.last_sync_timestamp = time.time()
         self.session_age_source = health_data.get("sessionAgeSource", "legacy_unverified")
+        if health_data.get("maxSessionSeconds") is not None:
+            self.session_limit_seconds = float(health_data["maxSessionSeconds"])
         container_uptime = health_data.get("sessionAgeSeconds", health_data.get("containerUptimeSeconds"))
         if container_uptime is not None:
             self.last_container_uptime_seconds = float(container_uptime)
@@ -68,9 +69,9 @@ class SessionTracker:
     def seconds_remaining_in_12h_session(self) -> Optional[float]:
         """Remaining seconds before Kaggle terminates the 12-hour session."""
         container_age = self.estimated_container_uptime_seconds
-        if container_age is None:
+        if container_age is None or self.session_limit_seconds is None:
             return None
-        return max(0.0, self.MAX_KAGGLE_SESSION_SECONDS - container_age)
+        return max(0.0, self.session_limit_seconds - container_age)
 
     @property
     def is_warning(self) -> bool:
@@ -92,7 +93,7 @@ class SessionTracker:
             "is_connected": self.is_connected,
             "is_estimate": True,
             "session_age_source": self.session_age_source,
-            "session_limit_source": "configured 12h assumption; not a platform deadline",
+            "session_limit_source": "legacy explicitly reported limit; not authoritative" if self.session_limit_seconds is not None else "unknown",
             "connected_uptime_seconds": round(self.connected_uptime_seconds, 1),
             "connected_uptime_formatted": format_duration(self.connected_uptime_seconds),
             "container_uptime_seconds": round(container_age, 1) if container_age is not None else None,

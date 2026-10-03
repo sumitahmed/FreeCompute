@@ -4,6 +4,7 @@ harness/skills/manager.py — Skill discovery, SKILL.md manifest parser, and sla
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import yaml
@@ -56,9 +57,13 @@ class SkillManager:
 
     FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 
-    def __init__(self, workspace_root: str = ".", user_skills_dir: Optional[str] = None):
+    def __init__(self, workspace_root: str = ".", user_skills_dir: Optional[str] = None, *, include_bundled=False):
         self.workspace_root = Path(workspace_root).resolve()
         self.project_skills_dir = self.workspace_root / "skills"
+        self.bundled_skills_dir = Path(sys.prefix) / "share" / "freecompute" / "skills"
+        if not self.bundled_skills_dir.is_dir():
+            self.bundled_skills_dir = Path(__file__).resolve().parents[2] / "skills"
+        self.include_bundled = include_bundled
         if user_skills_dir:
             self.user_skills_dir = Path(user_skills_dir).expanduser().resolve()
         else:
@@ -75,7 +80,9 @@ class SkillManager:
         self.command_map.clear()
         self.diagnostics.clear()
 
-        # 1. User-level skills (base)
+        if self.include_bundled and self.bundled_skills_dir.is_dir():
+            self._scan_directory(self.bundled_skills_dir, scope="bundled")
+        # User and then project manifests override bundled skills by name.
         if self.user_skills_dir.is_dir():
             self._scan_directory(self.user_skills_dir, scope="user")
 
@@ -99,7 +106,7 @@ class SkillManager:
         return self.skills
 
     def _scan_directory(self, base_dir: Path, scope: str):
-        root = self.workspace_root if scope == "project" else self.user_skills_dir
+        root = self._root(scope)
         try:
             validate_workspace_path(base_dir, str(root))
             items = sorted(base_dir.iterdir())
@@ -125,7 +132,7 @@ class SkillManager:
 
     def _parse_skill_file(self, file_path: Path, scope: str, fallback_name: str) -> Optional[SkillManifest]:
         try:
-            root = self.workspace_root if scope == "project" else self.user_skills_dir
+            root = self._root(scope)
             validate_workspace_path(file_path, str(root))
             content = file_path.read_text(encoding="utf-8")
         except Exception as exc:
@@ -169,6 +176,9 @@ class SkillManager:
             scope=scope,
             required_capabilities=required,
         )
+
+    def _root(self, scope):
+        return {"project": self.workspace_root, "user": self.user_skills_dir, "bundled": self.bundled_skills_dir}[scope]
 
     def get_skill(self, name_or_command: str) -> Optional[SkillManifest]:
         """Lookup skill by exact name or registered slash command."""

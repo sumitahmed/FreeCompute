@@ -51,12 +51,12 @@ def scrub(text):
 
 
 def get_container_uptime_seconds():
-    """Extract real container uptime from /proc/uptime if available."""
+    """Linux/kernel uptime proxy; this is not an account session start time."""
     try:
         with open("/proc/uptime", "r") as f:
             return float(f.readline().split()[0])
     except Exception:
-        return time.time() - config.start_time
+        return None
 
 
 def get_gpu_telemetry():
@@ -69,7 +69,7 @@ def get_gpu_telemetry():
             "--query-gpu=index,name,memory.used,memory.total,temperature.gpu,utilization.gpu",
             "--format=csv,noheader,nounits",
         ]
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, timeout=3).strip()
         gpus = []
         for line in out.splitlines():
             parts = [p.strip() for p in line.split(",")]
@@ -85,6 +85,62 @@ def get_gpu_telemetry():
         return gpus
     except Exception as exc:
         return [{"error": scrub(exc)}]
+
+
+_cpu_previous = None
+_telemetry_lock = threading.Lock()
+
+
+def hardware_metrics(gpus, llama_ok):
+    """Optional measurements; missing tools/files never change engine readiness."""
+    def item(value=None, source="not reported", status="observed"):
+        return {"value": value, "status": status if value is not None else "unknown", "source": source}
+    names = ('session_age_seconds', 'session_limit_seconds', 'session_remaining_seconds', 'cpu_utilization_pct',
+             'ram_used_bytes', 'ram_total_bytes', 'disk_free_bytes', 'disk_total_bytes', 'model_loaded', 'active_inference_slots')
+    metrics = {name: item() for name in names}
+    metrics['provider'] = item(os.environ.get('FREECOMPUTE_PROVIDER', 'kaggle'), 'supervisor provider setting', 'configured')
+    metrics['supervisor_uptime_seconds'] = item(max(0, time.time() - config.start_time), 'supervisor process clock')
+    metrics['kernel_uptime_seconds'] = item(get_container_uptime_seconds(), '/proc/uptime; not account session age')
+    metrics['cpu_count'] = item(os.cpu_count(), 'os.cpu_count; visible logical cores')
+    metrics['engine_health'] = item('healthy' if llama_ok else 'unhealthy', 'llama-server /health')
+    try:
+        global _cpu_previous
+        with _telemetry_lock:
+            with open('/proc/stat') as handle:
+                cpu = [int(v) for v in handle.readline().split()[1:9]]
+            current = (sum(cpu), cpu[3] + cpu[4])
+            if _cpu_previous and current[0] > _cpu_previous[0]:
+                metrics['cpu_utilization_pct'] = item(round(100 * (1 - (current[1] - _cpu_previous[1]) / (current[0] - _cpu_previous[0])), 1), '/proc/stat delta; host/container-visible CPU')
+            _cpu_previous = current
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        with open('/proc/meminfo') as handle:
+            memory = {line.split(':')[0]: int(line.split()[1]) * 1024 for line in handle}
+        metrics['ram_total_bytes'] = item(memory['MemTotal'], '/proc/meminfo; host/container-visible RAM')
+        metrics['ram_used_bytes'] = item(memory['MemTotal'] - memory['MemAvailable'], '/proc/meminfo; total minus available')
+    except (OSError, ValueError, KeyError, IndexError):
+        pass
+    try:
+        disk = shutil.disk_usage(os.path.dirname(config.log_path) or '.')
+        metrics['disk_free_bytes'], metrics['disk_total_bytes'] = item(disk.free, 'filesystem containing supervisor log'), item(disk.total, 'filesystem containing supervisor log')
+    except OSError:
+        pass
+    # Optional loopback observations do not execute local tools or make generation requests.
+    for endpoint, field in (('/slots', 'active_inference_slots'), ('/v1/models', 'model_loaded')):
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{config.llama_port}' + endpoint, timeout=1) as response:
+                data = json.loads(response.read(65536))
+            if field == 'active_inference_slots' and isinstance(data, list) and all(isinstance(s.get('is_processing'), bool) for s in data):
+                metrics[field] = item(sum(s['is_processing'] for s in data), 'llama-server /slots')
+            elif field == 'model_loaded':
+                metrics[field] = item(', '.join(str(s['id']) for s in data['data']), 'llama-server /v1/models')
+        except Exception:
+            pass
+    aliases = {'name': 'name', 'vram_used_mib': 'vramUsedMiB', 'vram_total_mib': 'vramTotalMiB', 'utilization_pct': 'utilizationPct', 'temperature_c': 'tempC'}
+    devices = [{name: item(gpu.get(key), 'nvidia-smi') for name, key in aliases.items()} for gpu in gpus if 'error' not in gpu]
+    metrics['gpu_count'] = item(len(devices) if devices else None, 'nvidia-smi')
+    return {'schema_version': 1, 'observed_at': time.time(), 'metrics': metrics, 'gpus': devices}
 
 
 def check_llama_health():
@@ -153,17 +209,16 @@ class SupervisorHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/health":
             llama_ok = check_llama_health()
-            container_uptime = time.time() - config.start_time
             gpus = get_gpu_telemetry()
             payload = {
                 "status": "healthy" if llama_ok else "degraded",
                 "supervisorUptimeSeconds": round(time.time() - config.start_time, 1),
-                "sessionAgeSeconds": round(container_uptime, 1),
-                "sessionAgeSource": "supervisor_start_estimate",
-                "isEstimate": True,
-                "linuxUptimeSeconds": round(get_container_uptime_seconds(), 1),
-                "maxSessionSeconds": 43200,
-                "secondsRemainingIn12hSession": max(0, round(43200 - container_uptime, 1)),
+                "sessionAgeSeconds": None,
+                "sessionAgeSource": "unknown; supervisor uptime is not account session age",
+                "linuxUptimeSeconds": get_container_uptime_seconds(),
+                "maxSessionSeconds": None,
+                "secondsRemainingIn12hSession": None,
+                "telemetry": hardware_metrics(gpus, llama_ok),
                 "llamaServer": {
                     "healthy": llama_ok,
                     "port": config.llama_port,

@@ -7,6 +7,7 @@ import os
 import random
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -24,13 +25,29 @@ class ComfyUIProvider(BaseProvider):
     Supported capabilities: IMAGE_GEN.
     """
 
-    def __init__(self, server_url: str = "", output_dir: str = "output", workspace_root: str = "."):
+    def __init__(self, server_url: str = "", output_dir: str = "output", workspace_root: str = ".", api_key: str = ""):
         super().__init__(name="ComfyUI (Qwen-Image-2.1)")
         self.server_url = server_url.rstrip("/")
+        self.api_key = api_key
+        scrubber.register_secret(api_key)
         scrubber.register_secret(self.server_url)
         self.workspace_root = workspace_root
         self.output_dir = validate_workspace_path(output_dir, workspace_root, True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _open(self, request, timeout):
+        if not self.api_key:
+            return urllib.request.urlopen(request, timeout=timeout)
+        request.add_header("Authorization", "Bearer " + self.api_key)
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+        try:
+            return urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code in {401, 403}:
+                raise ValueError("Image worker authentication failed; check its configured API key") from None
+            raise
 
     def get_capabilities(self) -> Set[Capability]:
         return {Capability.IMAGE_GEN}
@@ -51,7 +68,7 @@ class ComfyUIProvider(BaseProvider):
         url = f"{self.server_url}/system_stats"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "FreeCompute/0.1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with self._open(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 devices = data.get("devices", [])
                 gpus = []
@@ -222,7 +239,7 @@ class ComfyUIProvider(BaseProvider):
             headers={"Content-Type": "application/json", "User-Agent": "FreeCompute/0.1.0"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with self._open(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             prompt_id = data.get("prompt_id")
 
@@ -241,7 +258,7 @@ class ComfyUIProvider(BaseProvider):
                 headers={"User-Agent": "FreeCompute/0.1.0"},
             )
             try:
-                with urllib.request.urlopen(hist_req, timeout=5) as h_resp:
+                with self._open(hist_req, timeout=5) as h_resp:
                     h_data = json.loads(h_resp.read().decode("utf-8"))
                     if prompt_id in h_data:
                         outputs = h_data[prompt_id].get("outputs", {})
@@ -261,7 +278,12 @@ class ComfyUIProvider(BaseProvider):
         if Path(saved_filename).name != saved_filename or "/" in saved_filename or "\\" in saved_filename:
             raise ValueError("Invalid remote output filename")
         local_dest = validate_workspace_path(str(self.output_dir / saved_filename), self.workspace_root, True)
-        urllib.request.urlretrieve(view_url, local_dest)
+        if self.api_key:
+            import shutil
+            with self._open(urllib.request.Request(view_url), timeout=30) as response, local_dest.open("wb") as output:
+                shutil.copyfileobj(response, output)
+        else:
+            urllib.request.urlretrieve(view_url, local_dest)
 
         return {
             "status": "success",

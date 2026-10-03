@@ -4,6 +4,7 @@ import re
 import shutil
 import sys
 import time
+import threading
 
 from harness import __version__
 from harness.security import SecretScrubber, scrubber, safe_print as print
@@ -11,7 +12,31 @@ from harness.security import SecretScrubber, scrubber, safe_print as print
 
 def terminal_text(value):
     # Untrusted model/tool text must not move the cursor or emit terminal controls.
-    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", scrubber.scrub(value))
+    value = scrubber.scrub(value)
+    value = re.sub(r"(?:\x1b\]|\x9d)[^\x07\x1b]*(?:\x07|\x1b\\)", "", value)
+    value = re.sub(r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b[@-_]", "", value)
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", value)
+
+
+def color_supported():
+    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+        return False
+    if os.name != "nt":
+        return os.environ.get("TERM") != "dumb"
+    # Windows Console needs VT enabled before printing ANSI. Failure means plain text.
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.windll.kernel32
+        kernel.GetStdHandle.restype = wintypes.HANDLE
+        for stream in (-11, -12):
+            handle = kernel.GetStdHandle(stream)
+            mode = wintypes.DWORD()
+            if not kernel.GetConsoleMode(handle, ctypes.byref(mode)) or not kernel.SetConsoleMode(handle, mode.value | 4):
+                return False
+        return True
+    except (AttributeError, OSError):
+        return False
 
 
 class TerminalFormatter:
@@ -19,7 +44,7 @@ class TerminalFormatter:
     FG_CYAN, FG_GREEN, FG_YELLOW, FG_RED, FG_GRAY = "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[90m"
 
     def __init__(self, use_colors=True):
-        self.use_colors = bool(use_colors and not os.environ.get("NO_COLOR") and sys.stdout.isatty())
+        self.use_colors = bool(use_colors and color_supported())
 
     def _c(self, code, text):
         text = terminal_text(text)
@@ -98,37 +123,65 @@ class TerminalFormatter:
 
 class TaskPresentation:
     """Keep streamed text separate from activity; never render reasoning or tool JSON."""
-    def __init__(self, fmt):
+    def __init__(self, fmt, model_alias=""):
         self.fmt, self.started = fmt, time.monotonic()
         self.line_open, self.text_seen, self.first_text = False, False, None
         self.proposals, self.terminal_detail = {}, ""
+        self.waiting_worker = None
+        self.output_lock = threading.RLock()
+        self.model_alias, self.markdown_live, self.markdown_text = model_alias, None, ""
 
     def boundary(self):
+        if self.markdown_live:
+            self.markdown_live.stop()
+            self.markdown_live = None
+            self.markdown_text = ""
+            self.line_open = False
         if self.line_open:
             sys.stdout.write("\n")
             sys.stdout.flush()
             self.line_open = False
 
     def token(self, text):
+        with self.output_lock:
+            self._token(text)
+
+    def _token(self, text):
         clean = terminal_text(text)
         if not clean:
             return
         if self.first_text is None:
             self.first_text = time.monotonic() - self.started
         self.text_seen = True
-        sys.stdout.write(clean)
-        sys.stdout.flush()
+        if self.fmt.use_colors:
+            from rich.console import Console
+            from rich.live import Live
+            from rich.markdown import Markdown
+            if self.markdown_live is None:
+                self.markdown_live = Live(console=Console(file=sys.stdout, highlight=False), refresh_per_second=8,
+                                          vertical_overflow="visible", redirect_stdout=False, redirect_stderr=False)
+                self.markdown_live.start()
+            self.markdown_text += clean
+            self.markdown_live.update(Markdown(self.markdown_text, hyperlinks=False))
+        else:
+            sys.stdout.write(clean)
+            sys.stdout.flush()
         self.line_open = not clean.endswith("\n")
 
     def proposed(self, name, args):
         self.proposals[name] = args
 
     def phase(self, phase, detail):
+        with self.output_lock:
+            self.waiting_worker = detail if phase == "requesting_model" else None
+            self._phase(phase, detail)
+
+    def _phase(self, phase, detail):
         if phase in {"started", "queued", "waiting_approval"}:
             return
         self.boundary()
         if phase == "requesting_model":
-            self.fmt.print_phase(phase, f"Waiting for model · {detail}")
+            self.fmt.print_phase(phase, f"Thinking ({self.model_alias or detail}) · worker {detail}")
         elif phase == "executing_tool":
             self.fmt.print_tool_proposal(detail, self.proposals.get(detail, {}))
         elif phase in {"waiting", "recovering"}:
@@ -141,6 +194,7 @@ class TaskPresentation:
         self.fmt.print_tool_result(name, result)
 
     def approval(self, name, args, resolver):
+        self.waiting_worker = None
         self.boundary()
         return resolver(name, args)
 

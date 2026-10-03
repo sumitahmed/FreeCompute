@@ -4,10 +4,44 @@ Provides DuckDuckGo web search and lightweight HTML page extraction without exte
 """
 
 import html
+import ipaddress
 import re
+import socket
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
+from harness.security import scrubber
+
+MAX_WEB_BYTES = 2 * 1024 * 1024
+
+
+def validate_public_url(url):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password or any(c.isspace() or ord(c) < 32 for c in url):
+        raise ValueError('Web tools require a public HTTP(S) URL without credentials')
+    port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+    addresses = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
+    if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
+        raise ValueError('Web tools cannot access local/private network addresses')
+    return url
+
+
+class PublicRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open(request, timeout):
+    validate_public_url(request.full_url)
+    return urllib.request.build_opener(PublicRedirect()).open(request, timeout=timeout)
+
+
+def _read(response):
+    data = response.read(MAX_WEB_BYTES + 1)
+    if len(data) > MAX_WEB_BYTES:
+        raise ValueError('Web response exceeded the 2 MiB limit')
+    return data.decode('utf-8', errors='replace')
 
 DEFAULT_HEADERS = {
     "User-Agent": (
@@ -32,10 +66,10 @@ def search_web(query: str, max_results: int = 5) -> Dict[str, Any]:
     req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
 
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            raw_html = resp.read().decode("utf-8", errors="ignore")
+        with _open(req, timeout=12) as resp:
+            raw_html = _read(resp)
     except Exception as exc:
-        return {"query": clean_query, "error": f"Search request failed: {exc}", "results": []}
+        return {"query": clean_query, "error": scrubber.scrub(f"Search request failed: {exc}"), "results": []}
 
     # Match search result blocks: link + snippet
     # DuckDuckGo HTML structure: <a class="result__snippet" ...>...</a> and <a class="result__url" ...>...</a>
@@ -89,16 +123,16 @@ def fetch_url(url: str, max_chars: int = 5000) -> Dict[str, Any]:
 
     req = urllib.request.Request(clean_url, headers=DEFAULT_HEADERS)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _open(req, timeout=15) as resp:
             content_type = resp.headers.get("Content-Type", "")
             if "text/html" not in content_type and "text/plain" not in content_type:
                 return {
                     "url": clean_url,
                     "error": f"Unsupported Content-Type: {content_type}. Only text/html is supported.",
                 }
-            raw = resp.read().decode("utf-8", errors="ignore")
+            raw = _read(resp)
     except Exception as exc:
-        return {"url": clean_url, "error": f"Failed to fetch page: {exc}"}
+        return {"url": clean_url, "error": scrubber.scrub(f"Failed to fetch page: {exc}")}
 
     # Strip script and style blocks
     cleaned = re.sub(r"<script[\s\S]*?</script>", " ", raw, flags=re.IGNORECASE)

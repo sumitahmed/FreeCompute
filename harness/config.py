@@ -30,7 +30,7 @@ class ModelDeclaration(BaseModel):
 class WorkerConnection(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     worker_id: str
-    location: Literal["local", "kaggle", "private", "homelab", "remote-supervisor"]
+    location: str
     engine: Literal["llama.cpp", "openai-compatible", "ComfyUI"]
     url: str
     api_key: str = Field(default="", repr=False)
@@ -40,6 +40,8 @@ class WorkerConnection(BaseModel):
     resource_pool: str = ""
     resources: set[str] = Field(default_factory=set)
     timeout_seconds: Optional[int] = Field(default=None, gt=0, strict=True)
+    session_limit_seconds: Optional[int] = Field(default=None, gt=0, strict=True)
+    session_has_no_deadline: bool = False
 
     @field_validator("url")
     @classmethod
@@ -75,6 +77,7 @@ class HarnessConfig(BaseModel):
     journal_dir: str = Field(default=".qwen_harness", description="Directory to store journal and checkpoints")
     poll_health_interval_seconds: int = Field(default=5, gt=0, description="Frequency of health/telemetry polling")
     image_server_url: str = Field(default="", description="Remote ComfyUI image server URL")
+    image_api_key: str = Field(default="", repr=False, description="Optional separate ComfyUI gateway bearer key")
     engine: Literal["llama.cpp", "openai-compatible"] = "llama.cpp"
     model_profiles: list[ModelDeclaration] = Field(default_factory=list)
     workers: list[WorkerConnection] = Field(default_factory=list)
@@ -136,7 +139,7 @@ class HarnessConfig(BaseModel):
                 values[key.strip()] = value
             environment.update(values)
             dotenv_layers.append(values)
-        names = {"remote_url": "REMOTE_URL", "api_key": "API_KEY", "image_server_url": "IMAGE_SERVER",
+        names = {"remote_url": "REMOTE_URL", "api_key": "API_KEY", "image_server_url": "IMAGE_SERVER", "image_api_key": "IMAGE_API_KEY",
                  "model_alias": "MODEL_ALIAS", "transport": "TRANSPORT", "workspace_root": "WORKSPACE",
                  "request_timeout_seconds": "TIMEOUT", "max_context_tokens": "MAX_CONTEXT_TOKENS",
                  "journal_dir": "JOURNAL_DIR", "poll_health_interval_seconds": "POLL_HEALTH_INTERVAL_SECONDS"}

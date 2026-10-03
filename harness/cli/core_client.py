@@ -128,6 +128,17 @@ class CoreClient:
     def connect(self, value):
         return self._core.connect_worker(value)
 
+    def connect_image(self, value):
+        return self._core.connect_image_worker(value)
+
+    def select_image_model(self, profile_id, worker_id=None):
+        rows = [p for p in self.models() if "image_gen" in p["capabilities"]]
+        profile_id = self._resolve_id(profile_id, rows, "profile_id", "image profile")
+        return self._core.select_image_model(profile_id, worker_id)
+
+    def image_model_info(self):
+        return self._core.image_model_info()
+
     def model_info(self):
         return self._core.model_info()
 

@@ -11,6 +11,8 @@ from pydantic import ValidationError
 
 from harness import __version__
 from harness.cli.core_client import CoreClient
+from harness.cli.commands import CommandRegistry
+from harness.cli.input import TerminalInput
 from harness.cli.formatter import TerminalFormatter, TaskPresentation, terminal_text
 from harness.config import HarnessConfig
 from harness.core.service import CoreService
@@ -129,16 +131,15 @@ def print_status_telemetry(client, session_tracker, quota_ledger, fmt):
         print(f"Worker status: {fmt.green(health.status) if health.status == 'healthy' else fmt.yellow(health.status)} (observed now)")
         if health.raw.get("error"):
             _connection_problem(health.raw["error"], client.model_info()["selected_worker"] or "selected worker", fmt)
-        if "supervisorUptimeSeconds" in health.raw:
-            session_tracker.update_from_remote_health(health.raw)
-            values = session_tracker.get_summary()
-            print(f"Connected uptime: {values['connected_uptime_formatted']}")
-            print(f"Session age estimate: {values['container_uptime_formatted']} ({values['session_age_source']})")
-            print(f"12h assumption remaining: {values['remaining_12h_formatted']}")
-        for gpu in health.gpus:
-            print(f"CUDA{gpu.index} {fmt.bold(gpu.name)} · {gpu.vram_used_mib:,}/{gpu.vram_total_mib:,} MiB observed · {gpu.temp_c}°C · utilization {gpu.utilization_pct}%")
+        from harness.cli.telemetry import lines
+        for line in lines(health.raw):
+            print(terminal_text(line))
         quota = quota_ledger.get_summary()
-        print(fmt.dim(f"Local weekly quota estimate: {quota['estimated_remaining_hours']}h; provider quota is not queried."))
+        if quota['last_observed_hours'] is None:
+            print("Weekly quota: unknown; account dashboard is not queried.")
+        else:
+            print(f"Weekly quota: {quota['last_observed_hours']}h (user-provided, as of {quota['observed_as_of']}; may be stale)")
+        print(f"Local task wall time this run: {quota['session_consumed_hours']}h (estimated; separate from provider billing)")
         return health.status == "healthy"
     except Exception as exc:
         _error(exc, fmt)
@@ -159,53 +160,28 @@ def _show_model(client, fmt):
     print(f"Capacity  {info['allocation']['state']}")
 
 
-def _help(recovery=False):
-    commands = {
-        "/help": "Show these commands; /help recovery for explicit reconciliation",
-        "/status": "Refresh worker health, GPU observations and local quota estimates",
-        "/connect <URL>": "Reconnect the selected text worker with its existing key; URL is not saved",
-        "/model [profile] [worker]": "Show/select the model route for new tasks",
-        "/models": "List configured profiles, declared context and capabilities",
-        "/workers": "Refresh worker health and show held capacity",
-        "/queue": "Inspect durable queued/running/uncertain requests",
-        "/sessions": "List persisted sessions and resumable IDs",
-        "/resume <id>": "Resume a session; unique ID prefixes work",
-        "/new": "Start a new conversation on the next prompt",
-        "/skills": "List locally discovered skills",
-        "/diff": "Show the latest recorded file change in this workspace",
-        "/undo": "Preview a sealed snapshot restore; requires approval",
-        "/cancel [task-id]": "Cancel queued work; use Ctrl+C during active inference",
-        "/clear": "Clear the terminal",
-        "/image <prompt>": "Use the configured ComfyUI image worker",
-        "/exit": "Save local state and leave the CLI",
-    }
-    if recovery:
-        commands = {
-            "/run-next": "Dispatch the oldest eligible queued task; no background daemon",
-            "/actions": "Inspect recent actions, states and file hashes",
-            "/reconcile <action> <completed|not_executed> [sha256|absent]": "Explicitly resolve an uncertain local effect after approval",
-            "/reconcile-inference [lease]": "Approve idle reconciliation only after independent engine observation",
-            "/quota [hours]": "View/set user-observed provider quota",
-            "/image-server [url]": "Set/view the existing legacy ComfyUI endpoint",
-        }
-    for command, description in commands.items():
-        print(f"  {command}\n    {description}")
-    print("\nType a coding request to start. File changes and commands require your approval.")
+def _help(recovery=False, registry=None):
+    for line in (registry or CommandRegistry()).help_lines(recovery):
+        print(terminal_text(line))
+    print("Enter sends; Alt+Enter adds a line. Arrows navigate menus/history; Tab completes; Escape dismisses.")
+    print("File changes and commands require explicit approval.")
 
 
 def _run_task(client, fmt, prompt=None, resume=None, next_task=False, skill=None):
-    presentation = TaskPresentation(fmt)
+    presentation = TaskPresentation(fmt, client.model_info()['model'])
     resolver = lambda name, args: handle_approval_prompt(name, args, fmt)
     callbacks = dict(on_token=presentation.token, on_phase_change=presentation.phase,
                      on_tool_proposed=presentation.proposed, on_tool_executed=presentation.executed,
                      on_approval_request=lambda n, a: presentation.approval(n, a, resolver))
     # Reasoning events remain in Core; they are never terminal content.
-    if resume:
-        result = client.resume(resume, **callbacks)
-    elif next_task:
-        result = client.run_next(**callbacks)
-    else:
-        result = client.run_task(prompt, skill=skill, **callbacks)
+    from harness.cli.live import LiveTelemetry
+    with LiveTelemetry(client, presentation):
+        if resume:
+            result = client.resume(resume, **callbacks)
+        elif next_task:
+            result = client.run_next(**callbacks)
+        else:
+            result = client.run_task(prompt, skill=skill, **callbacks)
     presentation.finish(result)
     return result
 
@@ -225,23 +201,25 @@ def _image(client, prompt, fmt):
 
 def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, session_tracker, quota_ledger, comfy_prov, fmt, *, debug=False):
     _startup(config, client, fmt)
+    registry = CommandRegistry(skills_mgr)
+    reader = TerminalInput(registry, client)
     while True:
         try:
-            text = input(fmt.bold(fmt.cyan("freecompute> "))).strip()
+            text = reader.read().strip()
         except (EOFError, OSError, KeyboardInterrupt):
             print("\nLocal state saved. Remote GPU sessions must be stopped separately.")
             return 0
         if not text:
             continue
         command, _, arguments = text.partition(" ")
-        command, arguments = command.lower(), arguments.strip()
+        command, arguments = registry.canonical(command.lower()), arguments.strip()
         try:
             if command in {"exit", "quit", "/exit", "/quit"}:
                 print("Local state saved. Remote GPU sessions must be stopped separately.")
                 return 0
             if command == "/help":
                 if arguments not in {"", "recovery"}: raise ValueError("Usage: /help [recovery]")
-                _help(arguments == "recovery")
+                _help(arguments == "recovery", registry)
             elif command in {"/status", "/health"}:
                 print_status_telemetry(client, session_tracker, quota_ledger, fmt)
             elif command == "/connect":
@@ -263,6 +241,9 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
                 for worker in client.workers():
                     print(fmt.bold(worker['worker_id']) + f" · {worker['location']} · {worker['engine']} · {worker['health']}")
                     print(fmt.dim(f"  held {worker['active_or_quarantined']}/{worker['concurrency_limit']} slots (declared); last healthy {worker['last_seen'] or 'never observed'}"))
+                    from harness.cli.telemetry import lines
+                    for line in lines(worker['observed_resources'], compact=True):
+                        print(terminal_text("  " + line))
                     if worker['observed_resources'].get('error'):
                         _error(ValueError(worker['observed_resources']['error']), fmt)
                     if worker['observed_resources'].get('models') is not None:
@@ -272,12 +253,25 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
                     print(f"{model['profile_id']} · {fmt.bold(model['model'])} · {model['context_capacity']:,} tokens declared · {model['verification']}")
                     print(fmt.dim(f"  capabilities: {', '.join(model['capabilities'])}; workers: {', '.join(model['workers'])}"))
             elif command == "/model":
+                if not arguments:
+                    _list_routes(client, fmt, "text")
+                    arguments = reader.choose(command, client.models()) or ""
                 if arguments:
                     parts = arguments.split()
                     if len(parts) not in {1, 2}: raise ValueError("Usage: /model [profile-id] [worker-id]")
                     client.select_model(*parts)
                     print("Route selected for new tasks. Existing queued tasks keep their original route.")
                 _show_model(client, fmt)
+            elif command == "/image-model":
+                if not arguments:
+                    _list_routes(client, fmt, "image_gen")
+                    arguments = reader.choose(command, [p for p in client.models() if "image_gen" in p["capabilities"]]) or ""
+                if arguments:
+                    parts = arguments.split()
+                    if len(parts) not in {1, 2}: raise ValueError("Usage: /image-model [profile] [worker]")
+                    client.select_image_model(*parts)
+                info = client.image_model_info()
+                print("Image route: " + (info['model'] + " | " + str(info['selected_worker']) if info else "none; use /connect-image <URL> for the supported ComfyUI workflow"))
             elif command == "/queue":
                 rows = client.queue()
                 if not rows: print("Queue empty.")
@@ -319,7 +313,21 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
                     print(fmt.yellow("Undo stopped: " + str(result.get('error') or result.get('message') or result.get('status'))))
             elif command == "/skills":
                 if arguments not in {"", "list"}: raise ValueError("Usage: /skills")
-                print(fmt.cyan(skills_mgr.format_skills_list()))
+                skills_mgr.discover_skills()
+                for skill in skills_mgr.skills.values():
+                    print(f"{skill.slash_command} | {skill.name} ({skill.scope})\n  {skill.description}")
+                for diagnostic in skills_mgr.diagnostics:
+                    print(fmt.yellow(diagnostic))
+            elif command == "/skill":
+                if not arguments:
+                    for skill in skills_mgr.skills.values():
+                        print(f"{skill.name} | {skill.slash_command} | {skill.description}")
+                    arguments = reader.choose(command, list(skills_mgr.skills.values())) or ""
+                if arguments:
+                    name, _, request = arguments.partition(" ")
+                    skill = skills_mgr.get_skill(name)
+                    if not skill: raise ValueError("Unknown skill. Use /skills.")
+                    _run_task(client, fmt, prompt=request or "Execute the skill workflow in the workspace.", skill=skill)
             elif command == "/actions":
                 for action in client.actions():
                     print(f"{action['id']} · {action['name']} · {action['state']} · {action['target'] or ''}")
@@ -335,9 +343,11 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
             elif command == "/quota":
                 if arguments: quota_ledger.set_user_observed_balance(float(arguments))
                 print(quota_ledger.get_summary())
-            elif command == "/image-server":
-                if arguments: comfy_prov.server_url = arguments
-                print("Image endpoint: " + (scrubber.scrub(comfy_prov.server_url) or "not configured"))
+            elif command == "/connect-image":
+                if not arguments or len(arguments.split()) != 1: raise ValueError("Usage: /connect-image <URL>")
+                result = client.connect_image(arguments)
+                print(f"Image worker {result['worker_id']}: {result['status']} (observed now); endpoint changed for this run only")
+                if result.get('error'): _error(ValueError(result['error']), fmt)
             elif command == "/image":
                 _image(comfy_prov, arguments, fmt)
             elif command == "/clear":
@@ -357,6 +367,18 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
             print(fmt.yellow("Local operation interrupted. External outcomes remain unconfirmed; inspect /queue and /actions."))
         except Exception as exc:
             _error(exc, fmt, debug)
+
+
+def _list_routes(client, fmt, capability):
+    workers = {w['worker_id']: w for w in client._core.list_workers()}
+    routes = [p for p in client.models() if capability in p['capabilities']]
+    if not routes:
+        print("No configured " + capability + " route. " + ("Use /connect-image <URL>." if capability == "image_gen" else "Configure a text worker."))
+    for profile in routes:
+        print(fmt.bold(profile['profile_id']) + f" | {profile['model']} | {', '.join(profile['capabilities'])} | {profile['context_capacity']:,} context declared")
+        for identity in profile['workers']:
+            row = workers.get(identity, {})
+            print(f"  {identity} | {row.get('location', 'unknown')} | {row.get('engine', 'unknown')} | health {row.get('health', 'unknown')}")
 
 
 def _main():

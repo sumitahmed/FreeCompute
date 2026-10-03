@@ -104,22 +104,23 @@ class KaggleBrainClient:
             with urllib.request.build_opener(_NoRedirect()).open(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 gpus = []
-                for g in data.get("gpus", []):
-                    if "error" not in g:
+                devices = data.get("gpus", [])
+                for g in devices if isinstance(devices, list) else []:
+                    if isinstance(g, dict) and "error" not in g:
                         gpus.append(GpuTelemetry(
                             index=g.get("index", 0),
-                            name=scrubber.scrub(g.get("name", "Tesla T4")),
-                            vram_used_mib=g.get("vramUsedMiB", 0),
-                            vram_total_mib=g.get("vramTotalMiB", 15360),
-                            temp_c=g.get("tempC", 0),
-                            utilization_pct=g.get("utilizationPct", 0),
+                            name=scrubber.scrub(g.get("name", "unknown")),
+                            vram_used_mib=g.get("vramUsedMiB"),
+                            vram_total_mib=g.get("vramTotalMiB"),
+                            temp_c=g.get("tempC"),
+                            utilization_pct=g.get("utilizationPct"),
                         ))
                 return RemoteHealth(
                     status=scrubber.scrub(data.get("status", "unknown")),
                     supervisor_uptime_s=data.get("supervisorUptimeSeconds", 0.0),
                     container_uptime_s=data.get("containerUptimeSeconds", 0.0),
-                    max_session_s=data.get("maxSessionSeconds", 43200.0),
-                    seconds_remaining_12h=data.get("secondsRemainingIn12hSession", 43200.0),
+                    max_session_s=data.get("maxSessionSeconds"),
+                    seconds_remaining_12h=data.get("secondsRemainingIn12hSession"),
                     gpus=gpus,
                     raw=scrubber.structured(data),
                 )
