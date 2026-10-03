@@ -5,6 +5,7 @@ import os
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import get_app_session
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.filters import has_completions
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -75,6 +76,20 @@ def bindings():
     @keys.add("escape", "enter")
     def newline(event):
         event.current_buffer.insert_text("\n")
+
+    @keys.add("tab")
+    def tab(event):
+        buffer = event.current_buffer
+        state = buffer.complete_state
+        if state and state.completions:
+            buffer.apply_completion(state.current_completion or state.completions[0])
+        elif buffer.document.text_before_cursor.startswith('/'):
+            # Cached completions also handle typing /mo+Tab in one key batch.
+            values = list(buffer.completer.get_completions(buffer.document, CompleteEvent(completion_requested=True)))
+            if values:
+                buffer.apply_completion(values[0])
+        else:
+            buffer.insert_text('    ')
 
     @keys.add("escape", filter=has_completions)
     def dismiss(event):
