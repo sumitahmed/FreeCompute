@@ -31,8 +31,8 @@ and main merge remain outside the current GUI task. Older evidence stays histori
 ## Sequence and evidence gates
 
 GUI continuation, 2026-10-03: React/TypeScript/Vite workspace and authenticated
-loopback HTTP/SSE Core transport are implemented. **230 backend unit tests**
-(original 210 + 20 API), **10 frontend tests**, and **5 Chromium browser flows**
+loopback HTTP/SSE Core transport are implemented. **232 backend unit tests**
+(original 210 + 22 API), **10 frontend tests**, and **5 Chromium browser flows**
 passed; production build and normal launcher smoke passed. Approval/edit/real
 local test receipts, refresh/reconnect, queue and cancellation/reconciliation
 were exercised with explicitly simulated inference. No GPU quota, main merge,

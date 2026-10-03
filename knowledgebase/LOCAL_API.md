@@ -165,7 +165,7 @@ queue and committed snapshots, with revision checks against stale task snapshots
 
 ## Verification status
 
-Tested final evidence: 20 HTTP/Core API tests in the **230-pass full unit suite**,
+Tested final evidence: 22 HTTP/Core API tests in the **232-pass full unit suite**,
 10 frontend transport/component tests, 5 Chromium browser flows, a strict
 TypeScript/Vite production build and the normal CLI launcher smoke. Exact timings
 and browser cases are recorded in [V1_GUI.md](V1_GUI.md).

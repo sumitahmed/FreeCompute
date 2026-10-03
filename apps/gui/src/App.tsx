@@ -128,7 +128,7 @@ function Workspace({ client, onUnauthorized, onDisconnect }: { client: APIClient
         <nav className="session-list" aria-label="Sessions">{core.sessions.map(session => <button key={session.id} aria-current={session.id === core.selected && view === 'conversation' ? 'page' : undefined} onClick={() => { core.setSelected(session.id); setView('conversation') }}>
           <span className="session-title">{session.title || 'New session'}</span><span className="session-detail"><span>{human(session.status)}</span><time>{new Date(session.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</time></span>
         </button>)}{!core.sessions.length && <p className="muted small">No sessions yet. Create one to begin.</p>}</nav>
-        <div className="sidebar-bottom"><button aria-current={view === 'settings' ? 'page' : undefined} onClick={() => setView('settings')}>⚙ Workers &amp; settings</button><div className="local-note">Tools and history stay on this machine.</div></div>
+        <div className="sidebar-bottom"><button aria-current={view === 'settings' ? 'page' : undefined} onClick={() => setView('settings')}>⚙ Workers &amp; settings</button><div className="local-note">Tools execute locally. Core saves history.</div></div>
       </aside>
       <main className="main-pane">
         <div className="pane-heading"><div><h1>{view === 'settings' ? 'Workers & settings' : core.sessions.find(s => s.id === core.selected)?.title || 'Workspace'}</h1><span>{view === 'settings' ? 'Registered Core routes and client connection' : core.selected ? `Session ${short(core.selected)} · persisted by Core` : 'Create a session to submit a task'}</span></div>
