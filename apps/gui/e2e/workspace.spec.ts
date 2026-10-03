@@ -100,6 +100,8 @@ test('registry compatibility, engine failures, and narrow responsive layout are 
   await newTask(page, '[demo:failure] Simulate an engine authentication failure.')
   await expect(page.locator('.task-meta')).toContainText('failed')
   await expect(page.getByText(/SIMULATED engine authentication failure/).first()).toBeVisible()
+  await expect(page.getByText('No model text returned', { exact: true })).toBeVisible()
+  await expect(page.getByText('Awaiting model output', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Toggle light or dark appearance' }).click()
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)

@@ -91,7 +91,7 @@ export function Conversation({ tasks, events, approvals, busyApproval, onDecisio
         <div className="task-meta"><Badge state={task.state} /><span>{short(task.id)} · {seconds.toFixed(0)}s elapsed</span></div>
         {items.map(item => item.kind === 'model' ? <div className="model-message" key={item.key}>
           <span className="message-label">ASSISTANT{!item.finished ? ' · STREAMING' : ''}</span>
-          {item.content ? <p className="model-text">{item.content}</p> : <p className="muted">Awaiting model output</p>}
+          {item.content ? <p className="model-text">{item.content}</p> : <p className="muted">{item.finished ? 'No model text returned' : 'Awaiting model output'}</p>}
           {item.reasoning && <details><summary>Reasoning emitted by the engine</summary><pre>{item.reasoning}</pre></details>}
         </div> : <section className="tool-card" key={item.key} aria-label={'Tool ' + item.name}>
           <div className="tool-heading"><strong>{item.name}</strong><Badge state={item.state} /></div>

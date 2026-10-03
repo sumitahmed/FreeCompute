@@ -75,8 +75,9 @@ describe('Core presentation', () => {
     const view = render(<Conversation {...props} events={[event(1, 'model.requested'), event(2, 'stream.text', { text: 'Visible output' })]} />)
     expect(screen.queryByText('Reasoning emitted by the engine')).toBeNull()
     expect(document.querySelector('script')).toBeNull()
-    view.rerender(<Conversation {...props} events={[event(1, 'model.requested'), event(2, 'stream.reasoning', { text: 'Explicit displayable engine output' })]} />)
+    view.rerender(<Conversation {...props} events={[event(1, 'model.requested'), event(2, 'stream.reasoning', { text: 'Explicit displayable engine output' }), event(3, 'model.received', { error: 'No text returned' })]} />)
     expect(screen.getByText('Reasoning emitted by the engine')).toBeTruthy()
+    expect(screen.getByText('No model text returned')).toBeTruthy()
     expect(screen.getByText('Recorded final answer')).toBeTruthy()
   })
   it('shows stale observations without turning free VRAM into schedulable capacity', () => {
