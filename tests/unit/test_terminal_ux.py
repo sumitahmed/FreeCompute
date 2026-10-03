@@ -83,6 +83,8 @@ class MenuTests(unittest.TestCase):
                         observed['menu'] = [c.text for c in state.completions]
                         break
                     time.sleep(.01)
+                observed['buffer'] = reader.session.default_buffer.text
+                observed['state'] = repr(reader.session.default_buffer.complete_state)
                 pipe.send_text('\x1b[B\r')  # Down selects, Enter completes without submitting.
                 time.sleep(.1)
                 observed['selected'] = reader.session.default_buffer.text
@@ -93,7 +95,7 @@ class MenuTests(unittest.TestCase):
             thread.start()
             answer = reader.read()
             thread.join(3)
-        self.assertEqual(observed.get('menu'), ['/model', '/models'])
+        self.assertEqual(observed.get('menu'), ['/model', '/models'], observed)
         self.assertEqual(observed['selected'], '/model')
         self.assertEqual(answer, '/model')
 
