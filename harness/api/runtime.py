@@ -64,6 +64,8 @@ class LocalRuntime:
 
     def resume(self, task_id):
         task = self.core.views.task(task_id)
+        if self.core.views.session(task["session_id"])["session"]["current_task_id"] != task_id:
+            raise Conflict("Only this session's current task can be resumed")
         with self.changed:
             if self.operation.locked() or self._resume:
                 raise Conflict("A local task is active; wait for it before resuming")
@@ -96,7 +98,8 @@ class LocalRuntime:
 
     def close(self):
         self.stop.set()
-        self.core.cancel()
+        if self.core._running_task_id:
+            self.core.cancel(self.core._running_task_id)
         self.wake()
         if self.thread.is_alive():
             self.thread.join(5)
