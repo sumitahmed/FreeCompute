@@ -13,7 +13,7 @@ FOR V1**. The prior GUI experiment remains on its separate branch.
 | --- | --- |
 | Accepted backend before modifications | 210 unit tests passed in 82.084s |
 | Focused existing CLI integration | 15 tests passed |
-| Final full unit suite | **228 passed in 73.320s**; original 210 unchanged, 18 new production regressions |
+| Final full unit suite | **229 passed in 47.821s**; original 210 unchanged, 19 new production regressions |
 | Installed editable CLI, fresh temporary venv | Help/launch executed outside repo; baseline wrong-model banner, false ONLINE status and ignored coding `--prompt` reproduced before fixes |
 | Clean wheel/source snapshot | `freecompute-0.1.0-py3-none-any.whl` built outside the repo |
 | Wheel inventory | **46** production Python files byte-matched to snapshot; YAML sample present; no experiments, GUI/API/tests or private `.env` |
@@ -31,7 +31,7 @@ FOR V1**. The prior GUI experiment remains on its separate branch.
 | Final releasable-source scan | **155 files, zero findings**; ignored private config/key files excluded; matched secret text is never reprinted |
 
 Wheel SHA256 observed in this run:
-`37a82349126ddcd9331f6efae00678ab4a636e0ec7fe4bca13b81fe5bf851334`.
+`ce3ef182736bfdf2fa864348d7f432b601334de0831822564c0e52ec5acfeade`.
 Acceptance script prints its temporary evidence directory, containing
 `acceptance.json` and `transcripts.json`; no private key is logged. The source
 secret scanner reports locations/rules without reprinting a matched secret and

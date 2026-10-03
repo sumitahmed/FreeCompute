@@ -101,7 +101,7 @@ effects require action inspection and explicit reconciliation, not blind retry.
 
 ## Tested and unverified
 
-The full **228-test** suite preserved all original **210** tests. The installed
+The full **229-test** suite preserved all original **210** tests. The installed
 wheel passed **16** explicit loopback acceptance checks with real local file/test
 effects, including a 4-turn coding flow, restart/no replay, queue recovery, undo,
 cross-chunk redaction and native Windows Ctrl+Break. This is deterministic model
