@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0] - 2026-09-29
+## Unreleased V1 CLI candidate ? 2026-10-04
+
+- Fixed Windows ANSI prompt fragments; live slash/context menus, arrows/Enter/Tab/
+  Escape, multiline/history and streamed Markdown presentation.
+- Shared help/completion registry; bundled /review, /research, /leetcode manifests.
+- Independent text/image route selection and temporary reconnect with separate
+  dotenv credentials and authenticated gateway transport for remote ComfyUI.
+- Generic optional GPU/CPU/RAM/disk/session telemetry with provenance, stale samples,
+  unknown account limits/quota and bounded model-wait refresh.
+- Verified private Kaggle dataset reuse, complete runtime library packaging,
+  repaired optional builder, pinned-source fallback and manual shutdown.
+- Preserved approval/durable queue/quarantine/receipt/undo behavior; added focused
+  menu/telemetry/asset/web regressions and fresh installed-wheel acceptance.
+- Public docs/security/packaging corrected. Beta version remains 0.1.0; no production
+  release, GPU availability or universal context/transport certification is claimed.
+
+## Historical implementation notes ? 2026-09-29 (not a published release)
+
+The items below are original milestone notes. Cache/timing/session/image claims
+are historical, not current verified guarantees. Current behavior and evidence
+are in README and knowledgebase/V1_RELEASE_READINESS.md.
 
 ### Added
 - **Unified Standalone CLI:** Interactive REPL (`freecompute` / `run.bat` / `run.ps1`) with live terminal formatting, Markdown rendering, and truthful streaming statistics.

@@ -1,73 +1,41 @@
-# Contributing to FreeCompute
+# Contributing
 
-Thank you for your interest in contributing to FreeCompute! We welcome contributions, bug reports, feature requests, and documentation improvements.
+Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). V1 is the CLI/local Core product;
+GUI, delegation and advanced scheduling are deferred. Keep changes scoped and
+preserve existing acceptance evidence as dated history.
 
-All participants are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
-
----
-
-## Development Setup
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-org/FreeCompute.git
-   cd FreeCompute
-   ```
-
-2. **Create and activate a virtual environment:**
-   ```bash
-   python -m venv .venv
-
-   # Windows (PowerShell):
-   .venv\Scripts\Activate.ps1
-
-   # Linux / macOS:
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies in editable mode:**
-   ```bash
-   pip install -e .
-   pip install -r requirements.txt
-   ```
-
----
-
-## Testing Guidelines
-
-FreeCompute enforces a strict testing standard. All unit tests must pass before submitting a pull request:
-
-```bash
-# Run all unit tests
-python -m unittest discover -s tests/unit -p "test_*.py"
-
-# Run deep security & secret leak audit
-python tests/security_scan.py
+```powershell
+git clone https://github.com/sumitahmed/FreeCompute.git
+cd FreeCompute
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m unittest discover -s tests/unit -p "test_*.py"
+.\.venv\Scripts\python.exe tests/security_scan.py
+.\.venv\Scripts\python.exe tests/runtime/cli_release_acceptance.py
 ```
 
-When contributing new features or bug fixes:
-- Core systems (`harness/storage`, `harness/providers`, `harness/tools`, `harness/telemetry`, `harness/skills`, `harness/cli`) must include unit tests under `tests/unit/`.
-- Mock external network calls and remote GPU responses; automated tests must never require a live Kaggle or Colab instance to pass.
-- Test both success and failure/edge cases (e.g. timeouts, disconnected backends, denied user approvals).
+On Linux/macOS use `.venv/bin/python`. Python 3.10+ is the declared minimum;
+Windows/Python 3.12 is the executed release environment. No optional OpenHands SDK,
+frontend, browser daemon or GPU is required for the CLI tests. Package acceptance
+installs a fresh wheel outside the repo and runs deterministic HTTP inference
+fixtures with real local file/command effects. Do not call fixtures GPU acceptance.
 
----
+Create a feature branch from `main`. Run the full existing unit suite without
+bypassing failures, add regressions for genuine bugs, check `git diff --check`,
+and run the scanner before submitting a PR. Keep keys/live tunnel URLs/private
+data/generated binaries out of commits and wheel artifacts. Update docs and
+CHANGELOG when behavior changes.
 
-## Coding & Architectural Standards
+Core owns durable tasks, queues, leases, permission gates, receipt replay and
+sealed undo. Endpoint/model defaults must not rebind queued tasks. Unknown remote
+outcomes stay quarantined. Local tools use the ToolBroker; remote models never
+execute commands or access files directly. Skills may narrow scope and never
+bypass approval. Telemetry is optional and never grants capacity.
 
-- **Python:** Target Python 3.10+ compatibility.
-- **Type Annotations:** Use explicit type hints for all public classes, functions, and interfaces.
-- **Local Machine as Source of Truth:** All tool execution (`inspect_file`, `edit_file`, `write_file`, `run_command`), sandbox boundaries, task journaling, and undo snapshots live strictly on the local machine.
-- **Security & Redaction:** Always sanitize user input, respect the sandbox boundaries in `harness/tools/sandbox.py`, and register any sensitive parameters with `SecretScrubber`. Never hardcode API keys or live tunnel URLs in source files, tests, or notebooks.
-- **Modality Isolation:** Keep model backends isolated behind `BaseProvider` and `Capability` in `harness/providers/`. Never assume an LLM can generate images or vice-versa. Unsupported operations must produce clean, actionable errors.
-- **Prompt Prefix Stability:** Ensure system prompts and tool schemas remain immutable across turns to preserve 100% KV cache hit rates on remote GPU inference engines.
+Stable system/tool prefixes improve cache opportunities; they do not guarantee
+KV cache hit rates or sub-second TTFT. Distinguish observations, configured
+capacity, estimates, historical evidence and unverified claims.
 
----
-
-## Pull Request Process
-
-1. Fork the repo and create your branch from `master` (e.g. `feat/my-feature` or `fix/issue-description`).
-2. Implement your changes following the coding standards above.
-3. Verify that all 42+ unit tests pass (`python -m unittest discover -s tests/unit -p "test_*.py"`).
-4. Run the security scanner (`python tests/security_scan.py`) to confirm zero secrets are present.
-5. Update `CHANGELOG.md` and documentation if introducing new features or commands.
-6. Open a Pull Request with a clear summary of changes, rationale, and verification steps.
+Notebook changes must preserve empty outputs, compile every code cell, synchronize
+canonical/wrapper modules, and check dataset/hash/path/runtime guards without
+allocating GPU time. See [the current notebook procedure](knowledgebase/KAGGLE_FAST_START.md).
