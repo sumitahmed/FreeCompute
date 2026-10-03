@@ -62,6 +62,9 @@ class ProtocolServer(legacy.Supervisor):
             self.server.image_jobs += 1
             return
         if self.server.fail_chat_auth:
+            # Drain the fixture POST so closing it cannot turn the intended 401
+            # into a TCP reset on Windows before the client reads the response.
+            self.rfile.read(int(self.headers["Content-Length"]))
             self.send_response(401)
             self.end_headers()
             return
@@ -165,6 +168,8 @@ class EngineAndCliTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(core.inference.allocation()["state"], "idle")
         self.assertEqual(core.store.all("SELECT * FROM resource_claims"), [])
+        saved = json.loads(core.store.one("SELECT response FROM inference_attempts")["response"])
+        self.assertEqual(saved["remote_outcome"], "not_started")
 
     def test_incomplete_network_stream_quarantines_worker_without_tools(self):
         self.server.incomplete = True
