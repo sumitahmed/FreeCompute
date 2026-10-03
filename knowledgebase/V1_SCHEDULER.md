@@ -4,8 +4,8 @@ For the live dual-T4 acceptance, `kaggle-qwen` has concurrency 1
 and exclusive `gpu0` + `gpu1` in pool `kaggle-dual-t4`. The notebook startup and
 Cloudflare procedure and observed support limits are in
 [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Real queue/resource
-and safe pre-dispatch reconnect cases have now passed. The
-cancellation case is pending. The live checks do not change scheduler semantics
+and safe pre-dispatch reconnect and running-cancellation cases have passed. The
+live checks do not change scheduler semantics
 or release quarantined leases without explicit reconciliation.
 
 ## Live observations — 2026-10-03
@@ -22,6 +22,31 @@ Refresh marked the worker unreachable and the task stayed queued without an
 upstream POST. Restoring the route made the worker healthy and the queued task
 completed. This did not interrupt an active remote stream or restart Kaggle.
 Exact measurements and remaining cases are in the live acceptance ledger.
+
+Running cancellation was observed during the twelfth streamed reasoning event
+of a real long-response request. The local task became `cancelled` with
+`local_stop_confirmed=true`, `remote_cancel_confirmed=false` and remote outcome
+`unknown`. One quarantined lease retained both GPU claims. A second task paused
+without an inference attempt; closing/reopening the local Core preserved the
+lease and claims, with one upstream POST total for that probe. No remote cancel
+acknowledgement or automatic idle reconciliation was invented.
+
+The first probe hit a genuine output-accounting defect before its text-only
+cancel trigger. Its unknown outcome also retained both claims. The user then
+reported the actual Kaggle slot as `is_processing=False`; only that concrete
+idle observation supported explicit reconciliation of the exact lease. The
+queued diagnostic was cancelled before dispatch, and the affected case was
+retried after fixing packet-dependent text/reasoning byte accounting. The final
+cancellation lease remains quarantined in the disposable acceptance store.
+Successful health alone never released either unknown lease.
+
+The four-turn real coding task also resumed from local receipts after a saved
+tunnel address became unreachable and the user supplied its current address.
+The approved edit and command each executed once; all three local tests passed.
+The required full local suite passed **209 tests in 41.157 seconds** after the
+stream-accounting fix. These results qualify the bounded backend for GUI
+development, with unknown outcomes and reconciliation exposed through Core.
+All live tests are complete; the user can shut down Kaggle.
 
 2026-10-02. Authorized minimal backend continuation after Stage 3; no delegation,
 GUI, daemon, advanced scheduling, Redis or distributed coordination.

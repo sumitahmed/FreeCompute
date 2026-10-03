@@ -4,14 +4,15 @@ Real-worker continuation, 2026-10-03: use the feature branch's corrected
 `kaggle/freecompute_dual_gpu_server.ipynb` and the exact manual procedure in
 [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md). Both server wrappers
 are synchronized; historical proof output is preserved. The user manually started
-the worker, and real CoreService inference, local read-tool round trips, queue/
-resource admission, context escalation to 9,714 measured input tokens and safe
-client-route reconnect have now passed. See the live ledger for exact scope and
-pending coding/cancellation cases. The Cloudflare endpoint passed SSE in this
+the worker, and real CoreService inference, approved local coding across four
+model turns, queue/resource admission, context escalation to 9,714 measured
+input tokens, local cancellation with remote-unknown fencing and safe client-route
+reconnect have passed. The bounded backend is accepted for GUI development; the
+live ledger records exact scope and remaining release gates. The Cloudflare endpoint passed SSE in this
 session despite the vendor's documented Quick Tunnel limitation; no universal
 transport support guarantee is inferred.
 
-2026-10-02. Authorized continuation from Stage 3 acceptance
+Historical milestone, 2026-10-02. Authorized continuation from Stage 3 acceptance
 `aa15fc9fa87c45624acfc8eaf1aa5795f6603578` on
 `v2/safety-and-agentdriver-spike`. Stages 1-3 are preserved. This milestone ends
 with branch review; no merge, deployment, daemon or real GPU session.
@@ -164,6 +165,30 @@ does not invent Kaggle uptime/session timers.
 
 ## Evidence ledger
 
+**Fresh live continuation, 2026-10-03:** the production Core completed a real
+local read round trip and a four-turn coding task in a disposable Windows
+workspace. Its separately approved edit and test command produced local durable
+receipts; all three fixture tests passed. The queued task resumed after the user
+supplied a current tunnel address without repeating its completed edit. During
+real inference, a second task waited for the one-slot/both-T4 lease and ran after
+release. Client-route interruption before dispatch recovered without restarting
+Kaggle. Context measured 823 / 3,085 / 9,714 actual input tokens with no observed
+OOM or VRAM growth. Running cancellation confirmed only a local stop; both GPU
+claims persisted across Core restart and blocked further dispatch.
+
+The client now requests streamed usage. A second discovered defect counted
+fixed JSON framing for every text/reasoning packet toward the payload allowance;
+the fix counts UTF-8 text/reasoning payload while preserving bounded tool
+fragments and fail-closed oversized output. Three regressions were added; the
+fragmentation regression failed before the fix and passed after it. The full
+unit suite passed **209 tests in 41.157s**, including all previous assertions.
+No additional runtime dependency or package certification is claimed. Exact live
+measurements, the first failed cancellation probe, operator-confirmed idle
+reconciliation and successful retry are in
+[V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md).
+
+**Historical local milestone, 2026-10-02:**
+
 **Tested:** unchanged baseline 140 unit tests passed in 22.947s. During this phase,
 31 focused worker/scheduler tests passed in 2.114s and 12 authenticated adapter/
 actual-CLI tests passed in 13.959s. These include three deterministic workers,
@@ -245,6 +270,11 @@ reconnect, shared-pool contention, and actual TTFT/resource observations. No suc
 session was required or started for that historical bounded backend milestone.
 The user subsequently authorized today's running-worker continuation. Its
 measured live cases now supersede the corresponding unverified statuses only.
+The bounded backend has passed the live gate needed to begin a GUI client of the
+existing Core. Full-context/profile/license/release certification remains open;
+unknown remote cancellation must keep its leases until explicit reconciliation.
+All live tests are complete and the Kaggle session can be shut down. GUI work
+itself still requires the user's next scope instruction.
 
 See [V1_SCHEDULER.md](V1_SCHEDULER.md) for exact queue/recovery rules and phase
 inventory. Advanced memory, delegation, automation, GUI, Rust, daemon/API server,

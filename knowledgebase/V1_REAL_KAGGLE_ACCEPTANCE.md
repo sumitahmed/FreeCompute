@@ -1,6 +1,6 @@
 # V1 real Kaggle acceptance
 
-2026-10-03. Live acceptance on `v2/safety-and-agentdriver-spike`, preserving backend
+2026-10-03. Live acceptance completed on `v2/safety-and-agentdriver-spike`, preserving backend
 checkpoint `df091b0ba2e202647a2fb5daf7bf5c64050cecbe`. The user manually started
 the Kaggle worker. FreeCompute has now used that worker for real inference and
 local tool round trips. This continuation has not restarted Kaggle or changed
@@ -249,16 +249,36 @@ specific cases actually exercised; older fixture and notebook evidence remains h
 
 ## Live evidence — 2026-10-03
 
-Acceptance is in progress on the existing worker. Baseline authenticated health,
+Acceptance completed on the user-started worker. Baseline authenticated health,
 both Tesla T4s, model discovery and a streamed `READY` through Stage 4 were already
 observed (~3.219 seconds first token). Those baseline generation checks were not
 repeated in this continuation. Private artifacts live outside the repository in
 a disposable Windows temporary directory; no URL or credential is committed.
+The ignored local pointer is `scratch/v1-live-20261003/location.json`; case
+reports are `<temporary-root>/<case>/report.json`, with local SQLite receipts
+stored by the production runtime outside the repository/workspace.
 
 - **Local read / real tools:** completed in 18.531 seconds across two model turns.
   The model proposed `read_file` for `probe.txt`; the local Core executed it and
   returned a durable receipt. The model subsequently quoted its exact marker.
   Server usage recorded 959 then 1,068 input tokens; both streams ended completely.
+- **Coding agent / multiple turns:** the same saved task completed four real
+  model turns and three model/tool/model cycles: read both Python fixtures,
+  propose the `//` to `/` edit, propose the test command, then report its result.
+  Both the edit and `python -m unittest -v test_calculator` received separate
+  explicit user approvals through the local permission resolver. Four local tool
+  receipts completed; the command exited 0 and all three tests passed. Its owned
+  process exit was confirmed, duration 359 ms; tests remained byte-identical.
+  Actual input tokens across the four turns were 1,270 / 1,732 / 1,919 / 2,128;
+  completion tokens were 78 / 117 / 61 / 132. Network attempt times were
+  11.753 / 12.305 / 11.325 / 11.764 seconds (47.147 total), final TTFT 1.907 seconds.
+  Approval waits and waiting for an updated address are excluded from those
+  attempt times; they are not model latency. The edit was not replayed after
+  local Core recovery, even though its old approval expired on recovery.
+  Files and the Python process belonged to the disposable Windows workspace
+  outside FreeCompute. Kaggle received inference messages and tool schemas;
+  local approvals, file changes, command execution and receipts remained in Core.
+  No remote filesystem/command endpoint or shared local workspace was used.
 - **Scheduler / both-GPU resources:** while a real 50-line inference was streaming,
   a second submission remained queued with zero inference attempts. There was one
   active lease and two exclusive claims (`gpu0`, `gpu1`). Direct admission returned
@@ -270,6 +290,18 @@ a disposable Windows temporary directory; no URL or credential is committed.
   healthy and the queued task completed. Kaggle was not restarted. This verifies
   loss/recovery of a client route before dispatch; it is not a mid-stream Cloudflare
   outage or a remote process restart test.
+- **Cancellation / restart fencing:** after the correction described below,
+  a request for 150 lines was cancelled during its twelfth real reasoning event,
+  before final text or completion. Case wall time was 5.578 seconds; first streamed
+  token observation 2.625 seconds. The recorded delay from cancellation to local
+  return was 0.000 seconds at the Windows timer's resolution, not a guarantee of
+  zero latency. `requested=true`, `local_stop_confirmed=true`,
+  `remote_cancel_confirmed=false`, and `remote_outcome=unknown`. No terminal usage
+  receipt arrived. Both GPU claims stayed quarantined, the next task paused with
+  zero attempts, and reopening the local Core retained the claims with no second
+  POST. There was no remote cancellation acknowledgement and no idle inference
+  from healthy status or low utilization. The final unknown lease remains held
+  in the disposable acceptance store; no further GPU generation was attempted.
 - **Context:** progressively tested the unchanged 65,536-capacity profile, with
   beginning/middle/end sentinel recall successful at every dispatched size.
 
@@ -288,7 +320,7 @@ completion units (64,854 of 65,536). The larger candidate counted 72,806 plus
 tokenizer. No budget bypass was used to claim a full 65,536-token pass. No OOM,
 degraded health, or VRAM growth was observed in the three dispatched cases.
 
-**Discovered fix:** the client omitted `stream_options.include_usage`, leaving
+**Discovered fixes:** the client omitted `stream_options.include_usage`, leaving
 the earlier READY usage null. It now requests usage using the pinned engine's
 supported schema. A regression uses an empty-choices terminal usage chunk and
 checks actual counts reach the client. The live read and context cases confirmed
@@ -297,15 +329,66 @@ in 29.063 seconds** after this change; the focused client and engine/CLI suites
 also passed (5 and 12 tests). Older package/install evidence above is historical;
 no new wheel was certified for this client change.
 
-The coding task read both fixtures and proposed the one-line `//` to `/` fix.
-The user explicitly approved it, and FreeCompute applied the local edit with an
-approved interactive record and a completed tool receipt. The fixture tests
-have not yet run. Before the next model turn, the saved tunnel hostname stopped
-resolving (GitHub and Cloudflare DNS still resolved). The task stayed queued
-with no new inference attempt and idle allocation; no Kaggle restart was made.
-The same durable task can resume when the current worker address is supplied.
-Its remaining multi-turn/test result and the cancellation/unknown-remote-outcome
-case remain pending. GUI readiness will be decided after those cases finish.
+The first cancellation probe instead exposed a stream-accounting defect: after
+1,001 reasoning events (5,668 UTF-8 reasoning bytes persisted), the broker's
+65,536-byte allowance was exhausted by repeatedly counting its own JSON field
+names on every packet. It failed after 111.469 seconds, before the text-only
+cancellation trigger fired. This was a failed probe, not a cancellation pass.
+Its unknown outcome correctly quarantined both claims and survived local restart
+without redispatch. Text/reasoning accounting now counts their UTF-8 payload;
+structured tool fragments remain byte-bounded. The allowance, global cap, SSE
+line bound, deadlines and quarantine rules were not raised or disabled.
+
+A regression reproduced the false failure for the same 7,500-byte output split
+into smaller packets. It passes after the fix. Further regressions verify
+oversized UTF-8 reasoning still quarantines and oversized tool fragments cannot
+reach approval/execution. All **29 runtime tests passed in 2.649 seconds**; the
+required full command `python -m unittest discover -s tests/unit -p "test_*.py"`
+then passed **209 tests in 41.157 seconds**, without weakening existing assertions.
+
+The user supplied an actual read-only Kaggle `/slots` observation:
+`[{'id': 0, 'is_processing': False}]`. That observation supported explicit
+reconciliation of the exact failed probe's lease; it was not a cancellation
+acknowledgement. The queued diagnostic was cancelled locally without dispatch.
+Only then was cancellation retried, counting either text or reasoning as real
+stream progress. The successful retry above used the same model/profile/flags.
+The initial probe and operator reconciliation records are retained separately as
+`cancellation/report-before-stream-accounting-fix.json` and
+`cancellation/operator-idle-reconciliation.json`.
+
+The saved tunnel hostname also stopped resolving between the coding edit and its
+next model turn while GitHub/Cloudflare DNS still resolved. FreeCompute queued the
+turn without another inference attempt. The user supplied the current tunnel
+address; only the ignored local connection URL changed. The same task then
+continued from its completed edit receipt. No model restart/configuration change
+or repeat of the already-passed baseline generation was performed.
+
+## Acceptance decision and remaining boundaries
+
+**Accepted for GUI development within the bounded V1 contract.** Real inference,
+streaming, local read/edit/approved command, multi-turn continuation, single-store
+both-GPU admission, cancellation fencing, progressive context and safe reconnect
+have passed. No unresolved correctness blocker remains for a GUI client of the
+existing Core. No GUI code was started and no merge to `main` is part of this pass.
+
+Remaining backend/release gates are explicit:
+
+- Full 65,536-token input capacity remains unverified; the largest actual input
+  was 9,714 tokens. Keep the conservative byte budget and distinguish declared
+  capacity from measured evidence until tokenizer-aware/full-context acceptance.
+- Remote cancellation acknowledgement is unavailable. The GUI must show an
+  unknown remote outcome, retained claims and explicit idle reconciliation;
+  a local stop or healthy probe must not clear it automatically.
+- Quick Tunnel streams worked in this session, but this does not certify stable
+  transport service or broader transport/profile compatibility.
+- Exact deployed weight/binary/tokenizer/template hashes and license review,
+  a fresh release package and broader engine/hardware acceptance remain separate
+  release work. Resource fencing remains local to one Core/store; other
+  workspaces and external programs are outside that authority.
+
+All live tests are finished. The user can shut down the Kaggle session. A later
+run must establish a fresh worker connection and resolve any retained unknown
+lease explicitly rather than reusing it as proof of remote completion.
 
 ## Transport references inspected
 

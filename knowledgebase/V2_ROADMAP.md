@@ -5,8 +5,10 @@ bounded backend milestone below. The notebook preflight fixes and exact manual
 procedure are in [V1_REAL_KAGGLE_ACCEPTANCE.md](V1_REAL_KAGGLE_ACCEPTANCE.md).
 Preparation consumed no GPU quota. The user then manually started a worker and
 authorized real acceptance on 2026-10-03. Real text/tool, resource queuing,
-context and safe pre-dispatch reconnect evidence is now in that ledger. Coding
-approval and cancellation remain pending; no GUI implementation has started.
+context and safe pre-dispatch reconnect evidence is now in that ledger. Approved
+four-turn local coding and running-cancellation fencing also passed. The bounded
+V1 backend is accepted enough to begin GUI development; no GUI implementation
+has started, and broader release/profile certification remains open.
 
 Updated, 2026-10-02. **The user authorized Stages 1-3 and subsequently a bounded V1 backend slice: engines, worker/model registry, basic durable FIFO queue and resource accounting. Delegation, advanced memory/automation/scheduling, GUI, daemon, deployment, GPU sessions, merge and PR remain outside this milestone.** Older completion claims are historical.
 
@@ -17,7 +19,7 @@ Updated, 2026-10-02. **The user authorized Stages 1-3 and subsequently a bounded
 - Native foundation: six initial qualification tests passed at `fcef401`; [qualification record](CUSTOM_DRIVER_QUALIFICATION.md). Production core authority remains outside the replaceable driver. No Cline/Pi evaluation or deep SDK fork was started.
 - Stage 3: bounded local runtime completed for review on this branch. [Runtime record](STAGE3_LOCAL_RUNTIME.md): actual CLI/CoreService, versioned SQLite/checkpoints/artifacts, scoped approvals, restart/resume, generic context budgets and one inference allocation. Final unit acceptance: 140 passed with the prior 94 tests unchanged; the installed wheel passed edit/test/resume and explicit undo preview/denial. All 44 packaged Python files matched source and the default install requires no SDK. This is local fixture evidence, not real GPU or release acceptance.
 - V1 backend (historical local milestone): bounded engine adapters, SQLite worker/profile registry, durable eligible FIFO queue, capacity/resource leases, restart/cancellation fencing and useful CLI queries are implemented. **189 unit + 15 SDK + 28 foundation tests passed**; 50 packaged Python files matched source/install and the installed CLI passed edit/test, zero-replay resume, queue restart/dispatch and ComfyUI download. That milestone did not run a real GPU or start deployment/delegation/daemon work. Exact evidence and limits remain in [STAGE4_ENGINE_WORKERS.md](STAGE4_ENGINE_WORKERS.md) and [V1_SCHEDULER.md](V1_SCHEDULER.md).
-- Live V1 continuation, 2026-10-03: the user-started dual-T4 worker completed real streamed inference and a local read-tool round trip; one active inference fenced a second queued task until both-GPU capacity released. Progressive context measured up to 9,714 actual input tokens, and safe client-route loss/reconnect passed. A stream-usage reporting fix and regression passed **206 unit tests**. Coding approval and cancellation are pending; full 65,536-token capacity is not certified. This remains backend acceptance, not GUI/deployment work.
+- Live V1 continuation, 2026-10-03: the user-started dual-T4 worker completed real streamed inference, local read-tool round trips and a four-turn coding task with separately approved edit/test execution; all three fixture tests passed. One active inference fenced a second queued task until both-GPU capacity released. Progressive context measured up to 9,714 actual input tokens, and safe client-route loss/reconnect passed. Real cancellation confirmed local stop while retaining both GPU claims across restart for the unknown remote outcome. Stream usage and packet-dependent payload accounting defects were fixed; regressions and the full **209-test unit suite passed**. The bounded backend is accepted for GUI development; full 65,536-token capacity and release certification remain open. No GUI/deployment work or main merge was performed.
 
 ## Sequence and evidence gates
 
@@ -27,7 +29,7 @@ Updated, 2026-10-02. **The user authorized Stages 1-3 and subsequently a bounded
 | 1: safety/baseline | Focused current defects: fail-closed approvals/auth, protected recursive reads/snapshots, unique conflict-safe undo, redaction sinks, config precedence, Comfy health; remove unsupported claims in a later authorized docs pass | Existing suite plus targeted regressions; no permission/secret boundary bypass; notebook changes separately reviewed |
 | 2: foundation spike | Pinned OpenHands SDK via replaceable driver; fake endpoint, broker tools, controlled persistence/telemetry | All hard tests in BUILD_VS_REUSE_DECISION; public interfaces sufficient; user decides foundation based on evidence |
 | 3: local runtime | Shared commands/events, SQLite authority, full checkpoint/recovery, one worker/profile, CLI thin client, context budget | Approved edit/test survives reconnect/restart; uncertain effects reconciled, denial and truncation safe |
-| 4: engines/workers | V1 adapters/registry implemented; real Kaggle text/tool/stream/context evidence now recorded within measured bounds | Remaining coding/cancellation cases; exact model/tokenizer/license and full-context conformance remain separate |
+| 4: engines/workers | V1 adapters/registry implemented; real Kaggle text/tool/coding/stream/context/cancellation evidence recorded within measured bounds | Bounded live gate passed for GUI development; exact model/tokenizer/license and full-context conformance remain release gates |
 | 5: scheduler/delegation | Minimal durable queue, capacity and physical claims implemented in V1; child budgets/grants, delegation and advanced scheduling remain proposed | Local FIFO/capacity/GPU alias/cancel/failure/restart evidence now; delegation requires separate scope |
 | 6: skills/knowledge/media | Repaired portable skill commands/workflows, controlled knowledge promotion, Comfy job/artifact adapter; embeddings only if needed | Skill compatibility, protected promotion, memory provenance, job-ID correlation/auth/path/retention tests |
 | 7: persistent automation | Optional daemon, approved schedules, headless grants, homelab worker lifecycle | Restart/overlap/DST/missed-run cases; no silent risky effects or notebook keepalive dependency |
@@ -77,8 +79,10 @@ Reproduce canonical supervisor builds into notebook wrappers with a generation c
 6. **Autonomy:** which schedules may have standing grants, with what paths/actions/network/budgets/expiry? Default headless tasks cannot auto-approve.
 7. **Client:** local browser dashboard first versus desktop or editor priority after API stabilization.
 
-Current gate: finish the authorized live V1 coding/approval and cancellation cases,
-record the acceptance verdict, then stop for the user's decision on GUI scope.
+The authorized live V1 gate is complete and accepted for GUI development within
+the recorded bounds. All live tests finished; the Kaggle session can be shut down.
+Next gate: the user selects GUI client/scope, preserving Core as authority for
+approvals, tool receipts, queue/capacity and unknown-outcome reconciliation.
 The historical SDK experiment store remains isolated. Delegation, advanced
 scheduling, daemon and GUI work remain proposed; full profile/license/context
 certification and broad deployment compatibility are not implied by these live tests.
