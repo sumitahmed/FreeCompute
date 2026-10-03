@@ -107,6 +107,38 @@ class MenuTests(unittest.TestCase):
             self.assertEqual(reader.read(), '/help')
         self.assertEqual(read.call_args.args[0], 'freecompute> ')
 
+    def test_tab_escape_and_multiline_keyboard_flow(self):
+        with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
+            reader = TerminalInput(self.registry, self.client, interactive=True)
+            observed = {}
+            def drive():
+                time.sleep(.5)
+                pipe.send_text('/')
+                time.sleep(.3)
+                observed['slash_menu'] = reader.session.default_buffer.complete_state is not None
+                pipe.send_text('\x1b')
+                time.sleep(.4)
+                observed['dismissed'] = reader.session.default_buffer.complete_state is None
+                pipe.send_text('\x15/mo\t')  # Ctrl+U replaces the line; Tab completes.
+                time.sleep(.4)
+                observed['tab'] = reader.session.default_buffer.text
+                pipe.send_text('\x15first\x1b\rsecond\r')  # Alt+Enter inserts a newline.
+                time.sleep(.5)
+                pipe.close()
+            thread = threading.Thread(target=drive, daemon=True)
+            thread.start()
+            answer = reader.read()
+            thread.join(4)
+        self.assertTrue(observed['slash_menu'])
+        self.assertTrue(observed['dismissed'])
+        self.assertEqual(observed['tab'], '/model')
+        self.assertEqual(answer, 'first\nsecond')
+
+    def test_resume_completion_uses_real_saved_session_ids(self):
+        result = self.client.run_task('one')
+        values = CommandCompleter(self.registry, self.client).candidates('/resume ' + result['session_id'][:8])
+        self.assertEqual(values[0][0], result['session_id'])
+
     def test_image_selection_and_reconnect_do_not_change_text_or_tasks(self):
         text_route = self.core.model_info()
         completed = self.client.run_task('first')
@@ -132,6 +164,11 @@ class MenuTests(unittest.TestCase):
         for url in ('file:///etc/passwd', 'https://user:pass@host', 'http://host:0', 'http://host\n'):
             with self.assertRaises(ValueError):
                 self.core.connect_image_worker(url)
+        self.assertIsNone(self.core.image_profile_id)
+
+    def test_remote_image_requires_its_own_key(self):
+        with self.assertRaisesRegex(ValueError, 'FREECOMPUTE_IMAGE_API_KEY'):
+            self.core.connect_image_worker('https://images.example.invalid')
         self.assertIsNone(self.core.image_profile_id)
 
 
