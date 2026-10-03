@@ -65,6 +65,7 @@ update_nb.py
 # Temporary & Editor Artifacts
 *.tmp
 node_modules/
+*.tsbuildinfo
 apps/gui/test-results/
 apps/gui/playwright-report/
 *.bak

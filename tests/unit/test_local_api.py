@@ -101,6 +101,16 @@ class LocalAPITests(unittest.TestCase):
         with self.assertRaises(ValueError):
             APIServer(self.server.core, host="0.0.0.0")
 
+    def test_same_service_localhost_alias_supports_cookie_commands(self):
+        alias = f"http://localhost:{self.port}"
+        headers = {"Host": f"localhost:{self.port}", "Origin": alias}
+        status, session, response = self.request("POST", "auth/session", {"token": self.server.token}, auth=False, headers=headers)
+        self.assertEqual(status, 200)
+        headers.update(Cookie=response["Set-Cookie"].split(";")[0], **{"X-FreeCompute-CSRF": session["csrf"]})
+        self.assertEqual(self.request("POST", "sessions", {}, auth=False, headers=headers)[0], 201)
+        headers["Origin"] = f"http://localhost:{self.port + 1}"
+        self.assertEqual(self.request("POST", "sessions", {}, auth=False, headers=headers)[0], 403)
+
     def test_malformed_and_mass_assignment_body_rejected(self):
         for body in ({"profile_id": []}, {"id": "frontend-id"}, {"profile_id": "missing"}):
             self.assertEqual(self.request("POST", "sessions", body)[0], 400)

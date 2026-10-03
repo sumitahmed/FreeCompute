@@ -53,7 +53,7 @@ class APIServer(ThreadingHTTPServer):
         self.static_dir = Path(static_dir).resolve() if static_dir else None
         super().__init__((host, port), Handler)
         self.origin = f"http://127.0.0.1:{self.server_address[1]}"
-        self.allowed_origins = {self.origin}
+        self.allowed_origins = {self.origin, f"http://localhost:{self.server_address[1]}"}
         for origin in origins:
             parsed = urlsplit(origin)
             if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1"} or parsed.path or parsed.query or parsed.fragment or parsed.username or not parsed.port:
