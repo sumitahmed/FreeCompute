@@ -93,8 +93,19 @@ def _has_worker(config):
 
 
 def _setup_guidance():
-    print("No worker configured. Set FREECOMPUTE_REMOTE_URL and FREECOMPUTE_API_KEY in .env,")
-    print("or pass --config <worker-config.yaml>. Run /help for commands.")
+    print("No worker configured. Set FREECOMPUTE_API_KEY in .env, then launch with")
+    print('freecompute --remote-url "https://YOUR-KAGGLE-URL" or use /connect <URL>.')
+    print("A worker config is also supported. Run /help for commands.")
+
+
+def _connection_problem(error, worker, fmt):
+    if "authenticat" in error.lower() or "unauthorized" in error.lower():
+        _error(ValueError(error), fmt)
+    else:
+        print(fmt.yellow(f"Worker {worker} unreachable."))
+        print("The endpoint may be offline or the saved tunnel URL may have expired.")
+    print("Paste the fresh URL with: /connect https://YOUR-KAGGLE-URL")
+    print(fmt.dim("The CLI remains usable; no task was submitted by this health check."))
 
 
 def _startup(config, client, fmt):
@@ -104,7 +115,7 @@ def _startup(config, client, fmt):
         health = client.get_health()
         summary["status"] = health.status
         if health.raw.get("error"):
-            _error(ValueError(health.raw["error"]), fmt)
+            _connection_problem(health.raw["error"], info["selected_worker"] or "selected worker", fmt)
     summary["worker"] = info["selected_worker"] or "any eligible: " + ", ".join(w["worker_id"] for w in info["eligible_workers"])
     fmt.print_banner(config.remote_url, info["model"], str(Path(config.workspace_root).resolve()), summary)
     if not _has_worker(config):
@@ -117,7 +128,7 @@ def print_status_telemetry(client, session_tracker, quota_ledger, fmt):
         health = client.get_health()
         print(f"Worker status: {fmt.green(health.status) if health.status == 'healthy' else fmt.yellow(health.status)} (observed now)")
         if health.raw.get("error"):
-            _error(ValueError(health.raw["error"]), fmt)
+            _connection_problem(health.raw["error"], client.model_info()["selected_worker"] or "selected worker", fmt)
         if "supervisorUptimeSeconds" in health.raw:
             session_tracker.update_from_remote_health(health.raw)
             values = session_tracker.get_summary()
@@ -152,6 +163,7 @@ def _help(recovery=False):
     commands = {
         "/help": "Show these commands; /help recovery for explicit reconciliation",
         "/status": "Refresh worker health, GPU observations and local quota estimates",
+        "/connect <URL>": "Reconnect the selected text worker with its existing key; URL is not saved",
         "/model [profile] [worker]": "Show/select the model route for new tasks",
         "/models": "List configured profiles, declared context and capabilities",
         "/workers": "Refresh worker health and show held capacity",
@@ -232,12 +244,29 @@ def run_interactive_repl(config, client, orchestrator, undo_mgr, skills_mgr, ses
                 _help(arguments == "recovery")
             elif command in {"/status", "/health"}:
                 print_status_telemetry(client, session_tracker, quota_ledger, fmt)
+            elif command == "/connect":
+                if not arguments or len(arguments.split()) != 1:
+                    raise ValueError("Usage: /connect https://YOUR-KAGGLE-URL")
+                result = client.connect(arguments)
+                if not config.workers:
+                    config.remote_url = arguments
+                if result["status"] == "healthy":
+                    print(fmt.green(f"Connected: {result['worker_id']} · healthy (observed now)"))
+                    print("Advertised models: " + ", ".join(result["models"]))
+                    print("Endpoint changed for this run only. Continue with your next prompt.")
+                elif result["status"] == "unreachable":
+                    _connection_problem(result["error"], result["worker_id"], fmt)
+                else:
+                    _error(ValueError(result["error"] or "Worker is not ready"), fmt)
+                _show_model(client, fmt)
             elif command == "/workers":
                 for worker in client.workers():
                     print(fmt.bold(worker['worker_id']) + f" · {worker['location']} · {worker['engine']} · {worker['health']}")
                     print(fmt.dim(f"  held {worker['active_or_quarantined']}/{worker['concurrency_limit']} slots (declared); last healthy {worker['last_seen'] or 'never observed'}"))
                     if worker['observed_resources'].get('error'):
                         _error(ValueError(worker['observed_resources']['error']), fmt)
+                    if worker['observed_resources'].get('models') is not None:
+                        print("  advertised models (observed): " + ", ".join(worker['observed_resources']['models']))
             elif command == "/models":
                 for model in client.models():
                     print(f"{model['profile_id']} · {fmt.bold(model['model'])} · {model['context_capacity']:,} tokens declared · {model['verification']}")
@@ -339,7 +368,7 @@ def _main():
     parser.add_argument("subcommand", nargs="?", default="agent", choices=["agent", "image", "status"])
     parser.add_argument("--config", help="Worker YAML configuration; .env beside it is also loaded")
     parser.add_argument("--workspace", default="", help="Local project directory (supports spaces and Unicode)")
-    parser.add_argument("--remote-url", default="", help="Legacy single-worker endpoint; use workers[].url for a registry config")
+    parser.add_argument("--remote-url", default="", help="Temporary URL override for the selected text worker; beats the saved config URL")
     parser.add_argument("--api-key", default="", help=argparse.SUPPRESS)  # Compatibility; prefer private .env/process env.
     parser.add_argument("--image-server", default="", help="Existing legacy ComfyUI endpoint")
     parser.add_argument("--engine", choices=["llama.cpp", "openai-compatible"], help="Legacy single-worker protocol")
@@ -351,11 +380,13 @@ def _main():
     args = parser.parse_args()
     scrubber.register_secret(args.api_key)
     config = HarnessConfig.load(args.config)
-    if config.workers and (args.remote_url or args.api_key or args.engine):
-        raise ValueError("--remote-url, --api-key and --engine are single-worker flags. Update workers[].url/api_key_env/engine in the registry config instead.")
-    for name, value in (("remote_url", args.remote_url), ("api_key", args.api_key), ("image_server_url", args.image_server),
+    if config.workers and (args.api_key or args.engine):
+        raise ValueError("--api-key and --engine are single-worker flags. Update workers[].api_key_env/engine in the registry config instead.")
+    for name, value in (("api_key", args.api_key), ("image_server_url", args.image_server),
                         ("workspace_root", args.workspace), ("engine", args.engine), ("selected_profile", args.profile), ("selected_worker", args.worker)):
         if value: setattr(config, name, value)
+    if args.remote_url:
+        config.override_remote_url(args.remote_url)
     for value in (config.api_key, config.remote_url, config.image_server_url): scrubber.register_secret(value)
     workspace = Path(config.workspace_root).resolve()
     if not workspace.is_dir():

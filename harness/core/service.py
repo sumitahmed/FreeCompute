@@ -516,6 +516,46 @@ class CoreService:
                 "observed_at": timestamp(), "source": "attached engine health"}),))
         return health
 
+    def connect_worker(self, value):
+        """Reconnect the selected text worker; never submit or replay a task."""
+        from harness.config import WorkerConnection
+        from harness.core.engine_config import require_remote_auth
+        WorkerConnection.validate_url(value)
+        if not self._run_lock.acquire(blocking=False):
+            raise ValueError("Finish the active local task before reconnecting its worker")
+        try:
+            if "text" not in self.profile.capabilities:
+                raise ValueError("/connect requires a selected text model; use /model first")
+            worker_id = self.selected_worker or self.registry.candidates(self.profile.profile_id)[0]["id"]
+            engine = self.registry.engine(worker_id)
+            if not hasattr(engine, "with_endpoint"):
+                raise ValueError("The selected worker does not support text endpoint reconnect")
+            require_remote_auth(value, engine._client.api_key)
+            adapter = engine.with_endpoint(value)
+            profiles = [self.registry.profile(p["profile_id"]) for p in self.store.all(
+                "SELECT profile_id FROM worker_profiles WHERE worker_id=?", (worker_id,))]
+            # Existing identity/lease checks fence active or uncertain inference.
+            self.registry.attach(self.registry.worker(worker_id), profiles, adapter)
+            self.selected_worker = worker_id
+            health = self.registry.refresh(worker_id)
+            observation = next(w for w in self.registry.list_workers() if w["worker_id"] == worker_id)
+            result = dict(worker_id=worker_id, status=observation["health"],
+                          error=observation["observed_resources"].get("error", ""), models=[])
+            if health is not None and health.status == "healthy":
+                resources = dict(health.raw)
+                try:
+                    result["models"] = resources.get("models") if isinstance(resources.get("models"), list) else adapter.get_models()
+                    resources["models"] = result["models"]
+                    if self.profile.model not in result["models"]:
+                        raise ValueError("Selected model is not advertised by this endpoint; check /model and /workers")
+                except Exception as exc:
+                    result.update(status="unhealthy", error=scrubber.scrub(exc))
+                    resources["error"] = result["error"]
+                self.registry.observe(worker_id, result["status"], resources)
+            return scrubber.structured(result)
+        finally:
+            self._run_lock.release()
+
     def model_info(self):
         return dict(self.profile.to_dict(), selected_worker=self.selected_worker, allocation=self.inference.allocation(),
                     eligible_workers=[w for w in self.list_workers() if self.profile.profile_id in w["profiles"]])

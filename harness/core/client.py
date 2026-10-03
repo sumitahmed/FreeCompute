@@ -131,6 +131,26 @@ class KaggleBrainClient:
         except Exception as exc:
             raise RemoteBrainUnavailableError(scrubber.scrub(f"Cannot connect to Kaggle supervisor at {self.base_url}: {exc}"))
 
+    def get_models(self) -> List[str]:
+        """Discover advertised models with the same auth and no redirect forwarding."""
+        req = urllib.request.Request(self.base_url + "/v1/models", headers=self._get_headers())
+        try:
+            with urllib.request.build_opener(_NoRedirect()).open(req, timeout=min(10, self.timeout_seconds)) as resp:
+                body = resp.read(1024 * 1024 + 1)
+                if len(body) > 1024 * 1024:
+                    raise ValueError("Model-list response exceeded its byte limit")
+                models = json.loads(body).get("data")
+                if not isinstance(models, list) or any(not isinstance(m, dict) or not isinstance(m.get("id"), str) for m in models):
+                    raise ValueError("Invalid model-list response")
+                return scrubber.structured([m["id"] for m in models])
+        except urllib.error.HTTPError as exc:
+            exc.close()
+            if exc.code in (401, 403):
+                raise AuthenticationError("Authentication failed: check the configured worker key.") from None
+            raise RemoteBrainUnavailableError("Model discovery returned HTTP " + str(exc.code)) from None
+        except Exception as exc:
+            raise RemoteBrainUnavailableError(scrubber.scrub(exc)) from None
+
     def stream_chat(
         self,
         messages: List[Dict[str, Any]],

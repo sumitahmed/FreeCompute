@@ -20,6 +20,21 @@ class LlamaCppEngine:
     def get_capabilities(self):
         return frozenset({"text", "code_tools"})
 
+    def with_endpoint(self, value):
+        """Keep credentials, timeouts and capabilities while replacing transport."""
+        from copy import copy
+        adapter = copy(self)
+        value = value.rstrip("/")
+        if self.kind == "openai-compatible":
+            value = value.removesuffix("/v1")
+        adapter._client = type(self._client)(value, self._client.api_key,
+                                           self._client.model_alias, self._client.timeout_seconds)
+        adapter.identity_hash = fingerprint({"engine": self.kind, "endpoint": adapter._client.base_url})
+        return adapter
+
+    def get_models(self):
+        return self._client.get_models()
+
     def describe(self):
         return {"engine": self.kind, "capabilities": sorted(self.get_capabilities()), "streaming": True,
                 "cancellation": "local_socket_only", "remote_cancel_ack": False,

@@ -125,6 +125,9 @@ class CoreClient:
     def get_health(self):
         return self._core.get_health()
 
+    def connect(self, value):
+        return self._core.connect_worker(value)
+
     def model_info(self):
         return self._core.model_info()
 

@@ -49,7 +49,7 @@ class WorkerConnection(BaseModel):
             port = url.port
         except ValueError:
             raise ValueError("Worker endpoint has an invalid port") from None
-        if url.scheme not in {"http", "https"} or not url.hostname or port == 0 or url.username or url.password or url.query or url.fragment:
+        if any(c.isspace() or ord(c) < 32 for c in value) or url.scheme not in {"http", "https"} or not url.hostname or port == 0 or url.username or url.password or url.query or url.fragment:
             raise ValueError("Worker endpoint must be HTTP(S) without URL credentials, queries or fragments")
         return value
 
@@ -160,3 +160,20 @@ class HarnessConfig(BaseModel):
     def resolve_api_key(self, name):
         """Resolve worker credentials without mutating the process environment."""
         return os.environ.get(name, self._dotenv_values.get(name, ""))
+
+    def override_remote_url(self, value):
+        """Change only the selected text worker's endpoint for this process."""
+        WorkerConnection.validate_url(value)
+        if not self.workers:
+            self.remote_url = value
+            return
+        selected = self.selected_profile or next(
+            (p.profile_id for p in self.model_profiles if "text" in p.capabilities), "")
+        candidates = [w for w in self.workers if selected in w.profiles and
+                      (not self.selected_worker or w.worker_id == self.selected_worker)]
+        if not candidates or candidates[0].engine == "ComfyUI":
+            raise ValueError("--remote-url requires a selected text worker; use --profile and --worker")
+        target = candidates[0]
+        self.workers = [w.model_copy(update={"url": value}) if w.worker_id == target.worker_id else w
+                        for w in self.workers]
+        self.selected_worker = target.worker_id
