@@ -1,7 +1,9 @@
 """A normal terminal prompt with a live command menu; no full-screen UI."""
 import sys
+import os
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import get_app_session
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.filters import has_completions
 from prompt_toolkit.history import InMemoryHistory
@@ -83,13 +85,15 @@ def bindings():
 
 class TerminalInput:
     def __init__(self, registry, client, *, interactive=None):
-        self.interactive = (sys.stdin.isatty() and sys.stdout.isatty()) if interactive is None else interactive
+        self.interactive = (sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get('TERM') != 'dumb') if interactive is None else interactive
         self.session = None
         if self.interactive:
-            self.session = PromptSession(history=InMemoryHistory(), completer=CommandCompleter(registry, client),
+            surfaces = get_app_session()
+            self.session = PromptSession(input=surfaces.input, output=surfaces.output,
+                                         history=InMemoryHistory(), completer=CommandCompleter(registry, client),
                                          complete_while_typing=True, reserve_space_for_menu=8,
                                          key_bindings=bindings(), multiline=True,
-                                         style=Style.from_dict({"prompt": "bold ansicyan"}))
+                                         style=Style.from_dict({"prompt": "bold" if os.environ.get('NO_COLOR') else "bold ansicyan"}))
             self.session.app.ttimeoutlen = .05
             self.session.app.timeoutlen = .15
 
