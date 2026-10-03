@@ -312,6 +312,28 @@ class LocalAPITests(unittest.TestCase):
         self.assertNotIn(self.server.token, json.dumps(values))
         self.assertEqual(values["events"][-1]["payload"]["credential"], "[REDACTED_SECRET]")
 
+    def test_paused_tool_cycle_resumes_after_core_restart_with_fresh_approval(self):
+        from harness.core.inference import AllocationUnavailable
+        def pause_after_proposal(point, _action):
+            if point == "after_proposals":
+                raise AllocationUnavailable("SIMULATED pause before any local tool effect")
+        self.server.core.tool_broker.fault = pause_after_proposal
+        task = self.submit("[demo:edit]")
+        self.until(lambda: self.task_state(task["id"], "paused"))
+        self.assertIn("//", (self.workspace / "calculator.py").read_text())
+        self.server.close()
+        self.server = None
+        self.start()
+        self.assertEqual(self.request("GET", "tasks/" + task["id"])[1]["state"], "paused")
+        self.assertEqual(self.request("POST", f"tasks/{task['id']}/resume", {})[0], 202)
+        for tool in ("edit_file", "run_command"):
+            approval = self.until(lambda: self.pending(tool))
+            self.assertEqual(self.decision(approval)[0], 202)
+            self.until(lambda: not any(a["id"] == approval["id"] for a in self.request("GET", "approvals")[1]))
+        final = self.until(lambda: self.task_state(task["id"], "completed"))
+        self.assertIn("exited 0", final["final_answer"])
+        self.assertEqual(len(self.request("GET", "tasks")[1]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
