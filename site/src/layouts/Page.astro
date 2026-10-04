@@ -1,0 +1,60 @@
+---
+import '@fontsource-variable/ibm-plex-sans/wght.css';
+import '@fontsource/ibm-plex-mono/400.css';
+import '../styles/global.css';
+import Icon from '../components/Icon.astro';
+interface Props { title?: string; description?: string; }
+const {
+  title = 'FreeCompute — Your workspace. More compute.',
+  description = 'A local CLI agent for open-weight AI. Connect a GPU inference worker while keeping file tools, commands, approvals and saved sessions on your PC.',
+} = Astro.props;
+const base = import.meta.env.BASE_URL;
+const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
+const github = 'https://github.com/sumitahmed/FreeCompute';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#151d29" />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:site_name" content="FreeCompute" />
+    <meta name="twitter:card" content="summary" />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {canonical && <meta property="og:url" content={canonical} />}
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header container">
+      <a class="brand" href={base} aria-label="FreeCompute home">
+        <span class="brand-mark" aria-hidden="true">fc</span>
+        <span>FreeCompute</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href={`${base}#how-it-works`}>How it works</a>
+        <a href={`${base}#inside`}>Inside the CLI</a>
+        <a href={`${base}#setup`}>Setup</a>
+        <a class="nav-github" href={github}><Icon name="github" /> <span>GitHub</span><Icon name="external" /></a>
+      </nav>
+    </header>
+    <main id="main" tabindex="-1"><slot /></main>
+    <footer class="site-footer container">
+      <div>
+        <a class="brand" href={base}><span class="brand-mark" aria-hidden="true">fc</span>FreeCompute</a>
+        <p>Open-weight models. A local workflow.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <a href={github}>GitHub <Icon name="external" /></a>
+        <a href={`${github}#readme`}>Documentation <Icon name="external" /></a>
+        <a href={`${github}/blob/main/LICENSE`}>Apache 2.0 <Icon name="external" /></a>
+      </nav>
+    </footer>
+  </body>
+</html>
