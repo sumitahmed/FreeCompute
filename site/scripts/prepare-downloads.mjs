@@ -15,7 +15,7 @@ const downloads = resolve(siteRoot, 'public/downloads');
 mkdirSync(downloads, { recursive: true });
 const archiveName = 'freecompute-v1-source.zip';
 // Explicit tracked paths exclude private config, runtime state, site assets and .env.
-git(['archive', '--format=zip', '--prefix=FreeCompute-v1-preview/',
+git(['-c', 'core.autocrlf=false', 'archive', '--format=zip', '--prefix=FreeCompute-v1-preview/',
   `--output=${resolve(downloads, archiveName)}`, commit, '--',
   'harness', 'kaggle', 'skills', 'knowledgebase', 'tests',
   'README.md', 'LICENSE', 'SECURITY.md', 'pyproject.toml', '.gitignore', 'AGENTS.md']);

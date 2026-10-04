@@ -2,6 +2,15 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 test.describe('FreeCompute product landing page', () => {
+  test('provides a visible keyboard skip link that focuses the main content', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
+    await expect(page.getByRole('link', { name: 'Skip to content' })).toBeInViewport();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('main')).toBeFocused();
+  });
+
   test('renders actual product proof without console errors or missing images', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -79,7 +88,7 @@ test.describe('FreeCompute product landing page', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe('auto');
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).options({ rules: { 'label-content-name-mismatch': { enabled: true } } }).analyze();
     expect(results.violations).toEqual([]);
     await page.getByRole('tab', { name: /Check your worker/ }).click();
     await page.getByRole('tabpanel', { name: /Check your worker/ }).getByRole('link', { name: 'Enlarge worker status screenshot' }).click();

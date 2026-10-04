@@ -1,6 +1,7 @@
 ---
 import '@fontsource-variable/ibm-plex-sans/wght.css';
 import '@fontsource/ibm-plex-mono/400.css';
+import primaryFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?url';
 import '../styles/global.css';
 import Icon from '../components/Icon.astro';
 interface Props { title?: string; description?: string; }
@@ -28,13 +29,14 @@ const github = 'https://github.com/sumitahmed/FreeCompute';
     {canonical && <link rel="canonical" href={canonical} />}
     {canonical && <meta property="og:url" content={canonical} />}
     <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <link rel="preload" href={primaryFont} as="font" type="font/woff2" crossorigin="anonymous" />
     <title>{title}</title>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header container">
       <a class="brand" href={base} aria-label="FreeCompute home">
-        <span class="brand-mark" aria-hidden="true">fc</span>
+        <img class="brand-mark" src={`${base}favicon.svg`} width="32" height="32" alt="" />
         <span>FreeCompute</span>
       </a>
       <nav aria-label="Main navigation">
@@ -47,7 +49,7 @@ const github = 'https://github.com/sumitahmed/FreeCompute';
     <main id="main" tabindex="-1"><slot /></main>
     <footer class="site-footer container">
       <div>
-        <a class="brand" href={base}><span class="brand-mark" aria-hidden="true">fc</span>FreeCompute</a>
+        <a class="brand" href={base}><img class="brand-mark" src={`${base}favicon.svg`} width="28" height="28" alt="" />FreeCompute</a>
         <p>Open-weight models. A local workflow.</p>
       </div>
       <nav aria-label="Footer navigation">

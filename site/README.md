@@ -32,6 +32,7 @@ commands.
 npx playwright install chromium
 npm run build
 npm test
+python tests/verify_downloads.py
 ```
 
 The suite checks desktop/mobile layout, real images, screenshot keyboard controls,
