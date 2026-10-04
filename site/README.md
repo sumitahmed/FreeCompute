@@ -91,12 +91,13 @@ and unnecessary staged confirmation rituals in those skills.
 No generated screenshot, reconstructed terminal UI, staged pass or synthetic GPU
 output is included. The command-palette capture was omitted because it contains a
 personal absolute workspace path. The output-only capture is used once as a terminal-answer detail; its session
- timing is not promoted as a benchmark. The short session reference in
+timing is not promoted as a benchmark. The short session reference in
 the inspection/research captures is an opaque local history label, not a key or
 authentication token. No live tunnel URL or credential is visible in these assets.
 Astro generates responsive WebP delivery images; the PNG originals remain
 unchanged for full-size inspection. CSS crops blank right-hand areas in the hero,
-research and terminal-answer detail views. Captions identify these as details,
+research, terminal-answer and status views; inspection also uses a detail view on
+small screens. Captions identify these as details,
 and each has keyboard-accessible enlargement plus a direct-image fallback when
 JavaScript is off. Each source screenshot is displayed once. The redesign uses
 an editorial split hero, a wide inspection capture, an asymmetric research/answer
