@@ -1,6 +1,12 @@
 # FreeCompute V1 CLI release readiness
 
-## Current final CLI candidate - 2026-10-04
+Latest follow-up: [Final pre-push audit](V1_FINAL_PRE_PUSH_AUDIT.md), starting from
+`34cca5c`. It corrects the harmless `-Format` command rejection and adds four
+regressions. The complete suite now contains 289 tests; fresh package acceptance
+also checks definitive local command receipts. Counts and wheel hashes below
+belong to the earlier candidate and are historical for this follow-up.
+
+## Earlier terminal polish candidate - 2026-10-04
 
 The final terminal/product/telemetry pass is implemented locally on
 `v1/cli-release`, continuing from `5617ab6f1fc8c9f73816cae35ed837750a14375a`.

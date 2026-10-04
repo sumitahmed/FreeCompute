@@ -128,4 +128,4 @@ python tests/runtime/cli_release_acceptance.py
 
 Package acceptance installs outside the repo: inference is an explicit HTTP fixture;
 file edits, approvals, tests, restart/resume and undo are real local effects.
-[Current readiness/manual checks](knowledgebase/V1_RELEASE_READINESS.md).
+[Final pre-push audit/manual checks](knowledgebase/V1_FINAL_PRE_PUSH_AUDIT.md).

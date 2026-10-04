@@ -11,7 +11,7 @@ FreeCompute is a **local-first AI agent harness** designed to run high-capabilit
 - **Local Machine as Source of Truth:** All tool execution (`inspect_file`, `edit_file`, `write_file`, `run_command`), sandbox boundaries, task journaling, undo snapshots, and human approval gates live strictly on the local machine.
 - **Remote Compute as Inference Engine:** The remote GPU runs `llama-server` behind an authenticated supervisor (`kaggle/supervisor.py` on `:8081`). The remote side is an untrusted inference engine; it has no access to the user's local filesystem or terminal.
 - **Provider & Capability Isolation:** Modalities are strictly isolated behind `BaseProvider` and `Capability`. An LLM provider must not attempt image generation, and a ComfyUI provider must not attempt text conversation. Unsupported operations must produce clean, actionable errors.
-- **Prompt Prefix Stability:** To achieve sub-second TTFT on llama.cpp with large context windows (up to 65,536 tokens), the prompt header (system prompt + tool schemas) must remain immutable across turns, ensuring 100% KV cache hit rates on the remote GPUs.
+- **Prompt Prefix Stability:** Keep the prompt header (system prompt + tool schemas) stable across turns where possible. This supports llama.cpp prefix reuse; it does not guarantee KV cache hits, sub-second TTFT, or full 65,536-token live acceptance.
 
 ---
 
@@ -25,7 +25,7 @@ freecompute/
 │   ├── providers/      # Modality backends (llama.cpp, ComfyUI) and capability router
 │   ├── skills/         # Extensible skill discovery and slash-command manager
 │   ├── storage/        # Task journaling, checkpoints, and transactional undo ledger
-│   ├── telemetry/      # Container uptime, 12h session timer, quota ledger
+│   ├── telemetry/      # Optional worker observations, configured limits, quota ledger
 │   └── tools/          # Sandboxed tools (fs, terminal, web, registry)
 ├── kaggle/             # Remote supervisor proxy, deployment notebooks
 ├── skills/             # Project-level skills (SKILL.md manifests)

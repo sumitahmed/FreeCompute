@@ -1,6 +1,7 @@
 """Production runtime contracts; deterministic inference and real approved local tools."""
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -93,6 +94,41 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertEqual(core.resume(sid)["status"], "completed")
         self.assertEqual(len(self.engine.requests), 0)
         self.assertEqual((self.workspace / "value.txt").read_text(), "new")
+
+    def test_known_command_exit_codes_and_output_are_completed_receipts(self):
+        core = self.start()
+        for code in (0, 7):
+            with self.subTest(exit_code=code):
+                command = (f'"{sys.executable}" -c "import sys; print(format(7, \'d\')); '
+                           f'sys.stderr.write(\'diagnostic\\n\'); sys.exit({code})"')
+                self.engine.replies += [tool_reply([("run", "run_command", {"command": command})]), text_reply("Result inspected")]
+                task_id = core.submit("run harmless local command")
+                result = core.run(task_id, approval_resolver=lambda *_: True)
+                self.assertEqual(result["status"], "completed")
+                action = core.store.one("SELECT state,result FROM actions WHERE task_id=?", (task_id,))
+                receipt = json.loads(action["result"])
+                self.assertEqual(action["state"], "completed")
+                self.assertEqual(receipt["exit_code"], code)
+                self.assertEqual(receipt["stdout"].strip(), "7")
+                self.assertIn("diagnostic", receipt["stderr"])
+                self.assertTrue(receipt["owned_process_exit_confirmed"])
+                requests = len(self.engine.requests)
+                self.assertEqual(core.resume(result["session_id"])["status"], "completed")
+                self.assertEqual(len(self.engine.requests), requests)
+                self.assertEqual(core.store.one("SELECT result FROM actions WHERE task_id=?", (task_id,))["result"], action["result"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell regression")
+    def test_powershell_get_date_format_finishes_definitively(self):
+        command = 'powershell -NoProfile -Command "Get-Date -Format o"'
+        core = self.start(tool_reply([("date", "run_command", {"command": command})]), text_reply("Date inspected"))
+        result = core.run(core.submit("read local date"), approval_resolver=lambda *_: True)
+        self.assertEqual(result["status"], "completed")
+        action = core.store.one("SELECT state,result FROM actions")
+        receipt = json.loads(action["result"])
+        self.assertEqual(action["state"], "completed")
+        self.assertEqual(receipt["exit_code"], 0)
+        self.assertRegex(receipt["stdout"].strip(), r"^\d{4}-\d{2}-\d{2}T")
+        self.assertTrue(receipt["owned_process_exit_confirmed"])
 
     def test_missing_resolver_denial_and_non_boolean_consent(self):
         core = self.start()

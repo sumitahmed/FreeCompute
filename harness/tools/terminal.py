@@ -4,6 +4,7 @@ Executes shell commands (tests, builds, git status) under the workspace root wit
 """
 
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -32,7 +33,10 @@ def run_command(
     """
     cmd_lower = command.lower().strip()
     for blocked in BLOCKED_COMMANDS:
-        if blocked in cmd_lower:
+        # Match the format utility, not harmless -Format flags or format() calls.
+        matched = (re.search(r"(?<![\w-])format(?:\.com|\.exe)?(?=\s|$|[\"'/&|;])", cmd_lower)
+                   if blocked == "format" else blocked in cmd_lower)
+        if matched:
             raise SandboxSecurityViolation(f"Blocked hazardous command pattern: '{blocked}'")
 
     working_dir = validate_workspace_path(cwd or ".", workspace_root)

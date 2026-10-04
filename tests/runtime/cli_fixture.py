@@ -1,6 +1,7 @@
 """Explicit loopback-only test inference. Not shipped in the FreeCompute package."""
 import http.server
 import json
+import os
 import sys
 import threading
 import time
@@ -53,7 +54,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             prompt = request["messages"][last_user]["content"].lower()
             results = [json.loads(m["content"]) for m in request["messages"][last_user + 1:] if m["role"] == "tool"]
             self.event({"reasoning_content": "HIDDEN_FIXTURE_REASONING must never appear in terminal output"})
-            if "fix calculator" in prompt:
+            if "local command probe" in prompt:
+                commands = [
+                    'powershell -NoProfile -Command "Get-Date -Format o"' if os.name == 'nt'
+                    else f'"{self.server.tool_python}" -c "print(format(7, \'d\'))"',
+                    f'"{self.server.tool_python}" -c "import sys; print(format(7, \'d\')); sys.stderr.write(\'diagnostic\\n\'); sys.exit(7)"',
+                ]
+                if len(results) < len(commands):
+                    self.event({"tool_calls": [{"index": 0, "id": "command-probe-" + str(len(results)), "type": "function",
+                                "function": {"name": "run_command", "arguments": json.dumps({"command": commands[len(results)]})}}]}, "tool_calls")
+                else:
+                    assert [r.get('exit_code') for r in results] == [0, 7], results
+                    assert all(r.get('owned_process_exit_confirmed') for r in results), results
+                    assert 'diagnostic' in results[1]['stderr'], results
+                    self.event({"content": "FIXTURE COMMAND FINAL: both local command outcomes are definitive."}, "stop")
+            elif "fix calculator" in prompt:
                 stages = [("read_file", {"path": "calculator.py"}),
                           ("edit_file", {"path": "calculator.py", "old_str": "return a // b", "new_str": "return a / b"}),
                           ("run_command", {"command": f'"{self.server.tool_python}" -m unittest -v test_calculator', "timeout_seconds": 30})]

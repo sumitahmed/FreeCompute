@@ -233,6 +233,19 @@ def main():
         assert "\x1b" not in out and "\x07" not in out and "[REDACTED_SECRET]" in out
         record("terminal controls blocked and cross-chunk secret redaction")
 
+        out = cli("definitive local commands", "/new\nlocal command probe\ny\ny\n/exit\n")
+        assert 'Command exited 0' in out and 'Command exited 7' in out and 'FIXTURE COMMAND FINAL' in out, out
+        assert 'Local tool outcome unknown' not in out and 'diagnostic' in out, out
+        command_task, command_session, command_state = query("SELECT id,session_id,state FROM tasks WHERE prompt='local command probe'")[0]
+        command_receipts = query("SELECT state,result FROM actions WHERE task_id=? ORDER BY rowid", (command_task,))
+        assert command_state == 'completed' and [r[0] for r in command_receipts] == ['completed', 'completed']
+        assert [json.loads(r[1])['exit_code'] for r in command_receipts] == [0, 7]
+        requests = len(server.requests)
+        cli("resume definitive commands", '/resume ' + command_session[:8] + '\n/exit\n')
+        assert len(server.requests) == requests
+        assert query("SELECT state,result FROM actions WHERE task_id=? ORDER BY rowid", (command_task,)) == command_receipts
+        record("installed PowerShell -Format/Python format and known failure: definitive receipts, no resume replay")
+
         server.incomplete = True
         out = cli("incomplete inference", "", extra=("--prompt", "stream only"), expected=1)
         assert "Remote outcome unknown" in out and "Capacity remains held" in out
