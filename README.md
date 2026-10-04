@@ -26,7 +26,9 @@ FREECOMPUTE_API_KEY=your-session-api-key-from-kaggle
 ```
 
 Use the same key enabled in the Kaggle notebook. `.env` and `config.yaml` are
-ignored. With the installed command on PATH:
+ignored. To configure the documented Kaggle profile, copy
+[harness/config.sample.yaml](harness/config.sample.yaml) to `config.yaml`.
+With the installed command on PATH:
 
 ```powershell
 freecompute --remote-url "PASTE-KAGGLE-URL-HERE"
@@ -59,7 +61,10 @@ image notebooks are historical examples, not current V1 deployments.
 Verified cached engine/libraries/GGUF skip repeated builds/downloads. Without a
 cache, Cell 4 tries a checksum-pinned historical build artifact, then the official
 pinned source if unavailable. Integrity/device failures stop. No public binary
-release or fixed startup time is claimed. [Fast-start/provenance details](knowledgebase/KAGGLE_FAST_START.md).
+release or fixed startup time is claimed. The optional dataset builder writes
+`freecompute-assets/` with the engine, its runtime libraries, an optional model,
+and a manifest containing source/model pins and SHA256 hashes. Attach that
+private dataset as a notebook input to reuse the verified files.
 
 [Quick Tunnels do not officially support SSE](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
 One historical session streamed; test your actual endpoint. Use a supported private
@@ -87,7 +92,7 @@ terminals use plain text. Activity follows Core events; reasoning is not display
 Put custom manifests in `~/.freecompute/skills` or project `skills/`; `/skills`
 refreshes them. Project overrides user, which overrides bundled. Skills can narrow
 scope and never bypass approval. `search_web`/`fetch_url` remain real local tools;
-network/search blocking can make them fail. [CLI details](knowledgebase/V1_CLI_PRODUCT.md).
+network/search blocking can make them fail.
 
 ## Workers, images and telemetry
 
@@ -105,7 +110,7 @@ is claimed; live image deployment remains a manual check.
 `/status` reports available GPU/CPU/RAM/disk data with provenance and sample age.
 Account session limits/remaining and weekly quota stay **unknown** without supported
 observations/configuration. Supervisor/Linux/local connected ages are distinct.
-Optional live-wait polling never grants capacity. [Telemetry contract](knowledgebase/WORKER_TELEMETRY.md).
+Optional live-wait polling never grants capacity.
 
 ## Safety and evidence
 
@@ -118,7 +123,10 @@ Socket closure does not confirm remote cancellation. Unknown outcomes retain
 capacity across restart until approved idle reconciliation with independent evidence.
 Declared 65,536-token capacity is not full input certification; prior live context
 acceptance reached 9,714 actual input tokens. Stable prefixes do not guarantee KV
-cache hits or TTFT. [Security](SECURITY.md) and [live evidence](knowledgebase/V1_REAL_KAGGLE_ACCEPTANCE.md).
+cache hits or TTFT. Prior live text acceptance included authenticated discovery,
+inference, streaming, local tool execution, a disposable coding task and queued
+resource scheduling. These observations apply to the tested worker and route;
+they are not certification of every model, transport or deployment.
 
 ```powershell
 python -m unittest discover -s tests/unit -p "test_*.py"
@@ -128,4 +136,6 @@ python tests/runtime/cli_release_acceptance.py
 
 Package acceptance installs outside the repo: inference is an explicit HTTP fixture;
 file edits, approvals, tests, restart/resume and undo are real local effects.
-[Final pre-push audit/manual checks](knowledgebase/V1_FINAL_PRE_PUSH_AUDIT.md).
+
+The landing website is maintained independently in
+[FreeCompute-WebSite](https://github.com/sumitahmed/FreeCompute-WebSite).

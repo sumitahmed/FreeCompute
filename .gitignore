@@ -77,3 +77,17 @@ update_nb.py
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Personal learning and development documentation stays local.
+/knowledgebase/
+/docs/
+/AGENTS.md
+/CHANGELOG.md
+/CONTRIBUTING.md
+/CODE_OF_CONDUCT.md
+/SECURITY.md
+/tests/foundation/README.md
+/tests/runtime/README.md
+
+# The landing website has its own sibling repository.
+/site/
