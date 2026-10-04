@@ -5,6 +5,6 @@ const { label, command } = Astro.props;
 ---
 <div class="command-block" data-command>
   <div class="command-heading"><span>{label}</span><button type="button" data-copy hidden aria-label={`Copy ${label.toLowerCase()}`}><Icon name="copy" /><span>Copy</span></button></div>
-  <pre tabindex="0" aria-label={label}><code>{command}</code></pre>
+  <pre tabindex="0" role="region" aria-label={label}><code>{command}</code></pre>
   <p class="copy-status" data-copy-status aria-live="polite"></p>
 </div>
