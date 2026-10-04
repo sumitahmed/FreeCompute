@@ -15,44 +15,53 @@ test.describe('FreeCompute product landing page', () => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your workspace.More compute.');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('More compute.Same workspace.');
     await expect(page.getByRole('link', { name: 'Set up FreeCompute' })).toHaveAttribute('href', '#setup');
-    await expect(page.getByRole('tab', { name: /Write code/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('figure.capture')).toHaveCount(5);
+    const originals = await page.locator('figure.capture .capture-image').evaluateAll((links) => links.map((link) => (link as HTMLAnchorElement).href));
+    expect(new Set(originals).size).toBe(5);
     const hero = page.getByRole('img', { name: 'Actual FreeCompute CLI returning Java prime-number code through the configured Kaggle Qwen worker.' });
     await expect(hero).toBeVisible();
     await expect.poll(() => hero.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     expect(errors).toEqual([]);
   });
 
-  test('selects screenshots with the keyboard and restores focus after enlargement', async ({ page }) => {
+  test('opens real inspection proof with the keyboard and restores focus', async ({ page }) => {
     await page.goto('/');
-    const first = page.getByRole('tab', { name: /Write code/ });
-    await first.focus();
-    await page.keyboard.press('ArrowDown');
-    const inspection = page.getByRole('tab', { name: /Inspect & test/ });
-    await expect(inspection).toBeFocused();
-    await expect(inspection).toHaveAttribute('aria-selected', 'true');
-    const panel = page.getByRole('tabpanel', { name: /Inspect & test/ });
-    await expect(panel).toContainText('Permission is pending');
-    const enlarge = panel.getByRole('link', { name: 'Enlarge file inspection & proposed test screenshot' });
-    await enlarge.click();
+    const inspection = page.getByRole('article', { name: 'Read the project. Review the next step.' });
+    await expect(inspection).toContainText('Permission is pending');
+    const enlarge = inspection.getByRole('link', { name: 'Enlarge file inspection & proposed test screenshot' });
+    await enlarge.focus();
+    await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Actual CLI screenshot' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Close screenshot' })).toBeFocused();
     await expect.poll(() => dialog.getByRole('img').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+    await expect(dialog).toContainText('not a test-pass receipt');
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
     await expect(enlarge).toBeFocused();
   });
 
-  test('switches to web-tool and honest telemetry captures', async ({ page }) => {
+  test('loads distinct research, terminal-answer and honest telemetry proof', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('tab', { name: /Search the web/ }).click();
-    await expect(page.getByRole('tabpanel', { name: /Search the web/ })).toContainText('not independently fact-checked');
-    await page.getByRole('tab', { name: /Check your worker/ }).click();
-    const panel = page.getByRole('tabpanel', { name: /Check your worker/ });
-    await expect(panel).toContainText('explicitly unknown');
-    await expect(panel.getByRole('img')).toBeVisible();
+    const research = page.getByRole('article', { name: 'Research from the same prompt.' });
+    await expect(research).toContainText('not independently fact-checked');
+    const output = page.getByRole('article', { name: 'Code, then an explanation.' });
+    await expect(output).toContainText('not a program-execution receipt');
+    const models = page.getByRole('region', { name: 'Open weights. Configured routes.' });
+    await expect(models).toContainText('explicitly unknown');
+    await expect(models).toContainText('Live image deployment remains unverified');
+    for (const proof of [research, output, models]) {
+      const image = proof.getByRole('img');
+      await image.scrollIntoViewIfNeeded();
+      await expect.poll(() => image.evaluate((item: HTMLImageElement) => item.complete && item.naturalWidth > 0)).toBe(true);
+    }
+    await models.getByRole('link', { name: 'Enlarge worker status screenshot' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close screenshot' }).click();
+    await expect(dialog).not.toBeVisible();
   });
 
   test('copies the launch command without including a key', async ({ page, context }) => {
@@ -90,8 +99,7 @@ test.describe('FreeCompute product landing page', () => {
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe('auto');
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).options({ rules: { 'label-content-name-mismatch': { enabled: true } } }).analyze();
     expect(results.violations).toEqual([]);
-    await page.getByRole('tab', { name: /Check your worker/ }).click();
-    await page.getByRole('tabpanel', { name: /Check your worker/ }).getByRole('link', { name: 'Enlarge worker status screenshot' }).click();
+    await page.getByRole('link', { name: 'Enlarge worker status screenshot' }).click();
     const modalResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
     expect(modalResults.violations).toEqual([]);
   });
@@ -101,10 +109,14 @@ test.describe('FreeCompute product landing page', () => {
     const page = await context.newPage();
     await page.goto(baseURL!);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: 'CLI screenshots' }).getByRole('link', { name: /Inspect & test/ })).toBeVisible();
-    await page.getByRole('navigation', { name: 'CLI screenshots' }).getByRole('link', { name: /Inspect & test/ }).click();
-    await expect(page.getByText('Permission is pending', { exact: false })).toBeVisible();
+    await expect(page.locator('figure.capture')).toHaveCount(5);
+    await page.getByRole('link', { name: 'See it in use' }).click();
+    await expect(page).toHaveURL(/#inside$/);
+    const inspection = page.getByRole('article', { name: 'Read the project. Review the next step.' });
+    await expect(inspection).toContainText('Permission is pending');
     await expect(page.getByRole('button', { name: 'Copy connect your text worker' })).not.toBeVisible();
+    await inspection.getByRole('link', { name: 'Enlarge file inspection & proposed test screenshot' }).click();
+    await expect(page).toHaveURL(/inspection[^/]*\.png$/);
     await context.close();
   });
 
