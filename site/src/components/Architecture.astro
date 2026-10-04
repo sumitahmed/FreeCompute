@@ -1,0 +1,34 @@
+---
+import SectionHeading from './SectionHeading.astro';
+---
+<section id="how-it-works" class="section container" aria-labelledby="architecture-title">
+  <SectionHeading index="02" label="The architecture" title="Local authority. Remote inference." id="architecture-title">
+    <p>Two clear responsibilities, connected through an authenticated worker endpoint.</p>
+  </SectionHeading>
+  <figure class="architecture">
+    <div class="architecture-flow">
+      <div class="architecture-node">
+        <span class="node-label"><span class="node-symbol" aria-hidden="true">⌘</span> ON YOUR PC</span>
+        <h3>FreeCompute CLI</h3>
+        <p class="node-subtitle">Your workspace + local Core</p>
+        <ul><li>File reads and approved edits</li><li>Approved commands and tests</li><li>Permissions, sessions and undo</li></ul>
+      </div>
+      <div class="architecture-link" aria-hidden="true">
+        <span>Model input</span><span class="flow-arrow">⟶</span>
+        <span class="flow-arrow flow-arrow-back">⟵</span><span>Responses + tool proposals</span>
+      </div>
+      <div class="architecture-node architecture-node-remote">
+        <span class="node-label"><span class="node-symbol" aria-hidden="true">▤</span> ON YOUR WORKER</span>
+        <h3>The model + GPU</h3>
+        <p class="node-subtitle">llama.cpp + authenticated supervisor</p>
+        <ul><li>Receives inference messages</li><li>Runs the configured model</li><li>Returns text and proposed tool calls</li></ul>
+      </div>
+    </div>
+    <figcaption>Your CLI sends model input and receives responses. The worker proposes tool calls; the local Core validates and executes them. HTTPS encrypts traffic in transit.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><span class="step-number">01</span><h3>Install on your PC.</h3><p>Run the Python CLI against your chosen project. Your local machine manages tools and history.</p></li>
+    <li><span class="step-number">02</span><h3>Connect a worker.</h3><p>Start the documented Kaggle notebook or configure a compatible endpoint. Pass its fresh URL to the CLI.</p></li>
+    <li><span class="step-number">03</span><h3>Review, then run.</h3><p>Ask for a task. Inspect proposed edits and commands, approve the ones you want, and check the result.</p></li>
+  </ol>
+</section>

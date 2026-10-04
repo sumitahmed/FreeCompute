@@ -7,8 +7,11 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "predev": "node scripts/prepare-downloads.mjs",
     "dev": "astro dev --host 127.0.0.1",
+    "precheck": "node scripts/prepare-downloads.mjs",
     "check": "astro check",
+    "prebuild": "node scripts/prepare-downloads.mjs",
     "build": "astro check && astro build",
     "preview": "astro preview --host 127.0.0.1",
     "test": "playwright test",

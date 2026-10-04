@@ -4,6 +4,8 @@ dist/
 test-results/
 playwright-report/
 reports/
+public/downloads/
+src/data/downloads.json
 # Individually inspected, user-supplied product captures.
 !src/assets/coding.png
 !src/assets/inspection.png
