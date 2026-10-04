@@ -1,10 +1,9 @@
 # FreeCompute product site
 
 A static Astro site with a landing page and a current V1 setup guide. All content
-is rendered as HTML; small native browser scripts add screenshot tabs, a dialog,
-and copy buttons. The CLI, GUI experiments, private config and Kaggle session are
+is rendered as HTML; small native browser scripts add a screenshot dialog and copy buttons. The CLI, GUI experiments, private config and Kaggle session are
 independent of this site. No analytics, third-party embeds or remote font requests
-are included. Fonts are self-hosted IBM Plex Sans and Mono (OFL).
+are included. Fonts are self-hosted IBM Plex Sans and Mono (OFL). Lucide icons render as static SVGs; their ISC notice is included in public/licenses/.
 
 ## Run locally
 
@@ -35,7 +34,7 @@ npm test
 python tests/verify_downloads.py
 ```
 
-The suite checks desktop/mobile layout, real images, screenshot keyboard controls,
+The suite checks desktop/mobile layout, five distinct real captures, keyboard enlargement,
 dialog focus, clipboard success/refusal, reduced motion, automated WCAG A/AA rules,
 guide/downloads, and the page with JavaScript disabled. It serves the production
 build on loopback port 4321, reusing the local preview when present. A manual screen-reader audit remains separate from
@@ -51,8 +50,10 @@ python -m unittest discover -s tests/unit -p "test_*.py"
 
 - Public, static product page. Developer desktop use; discovery must also work on
   a small phone over 4G. No user analytics or research statistics were assumed.
-- Quiet slate/blue palette, CSS color/spacing tokens, fluid typography, thin
-  dividers, subtle static grid/grain, small radii and short hover transitions.
+- Near-black/charcoal surfaces, white and gray type, CSS spacing tokens, fluid
+  typography, graphite dividers, subtle static grid/grain/vignette, small radii
+  and short hover transitions. There are no colored hero accents or reveal
+  animations. In-page navigation is immediate.
 - WCAG 2.2 AA is the implementation target. The site maintainer owns future
   content accessibility; keyboard, contrast and automated checks are performed
   during implementation. Screenshots also have descriptive alt text/captions.
@@ -60,8 +61,10 @@ python -m unittest discover -s tests/unit -p "test_*.py"
   CLS <= 0.1, under 30 KB gzipped page JavaScript, Lighthouse performance >= 95
   and accessibility 100. Lab runs are recorded separately; there is no field p75
   dataset yet.
-- Astro was chosen for prerendered HTML, native interactions and build-time image
-  optimization. React/Next/Tailwind are not required for this content-only page.
+- The existing Astro foundation is retained for prerendered HTML, native
+  interactions and build-time image optimization. TypeScript and the official
+  @lucide/astro package provide typed interactions and icons. This static page
+  does not need a React runtime, Framer Motion, or a Three.js canvas.
 - Product copy is grounded in the current `README.md`, `SECURITY.md`, CLI command
   registry/tool approval code, configuration sample, and live acceptance record.
   Historical live evidence is not a new benchmark. Colab is manual integration;
@@ -83,15 +86,22 @@ and unnecessary staged confirmation rituals in those skills.
 | `inspection.png` | `Screenshot 2026-10-04 103111.png` | File inspection and a proposed test command; permission pending |
 | `research.png` | `Screenshot 2026-10-04 102816.png` | A real `search_web` event; answer not independently fact-checked |
 | `status.png` | `Screenshot 2026-10-04 103137.png` | Observed GPU data and explicit unknown metrics |
+| `output.png` | `Screenshot 2026-10-04 102525.png` | A model answer, explanation and saved session reference; not execution evidence |
 
 No generated screenshot, reconstructed terminal UI, staged pass or synthetic GPU
 output is included. The command-palette capture was omitted because it contains a
-personal absolute workspace path. The output-only capture was redundant; its
-session timing is not promoted as a benchmark. The short session reference in
+personal absolute workspace path. The output-only capture is used once as a terminal-answer detail; its session
+ timing is not promoted as a benchmark. The short session reference in
 the inspection/research captures is an opaque local history label, not a key or
 authentication token. No live tunnel URL or credential is visible in these assets.
-Astro generates responsive WebP delivery images; the PNG originals remain unchanged
-for full-size inspection. The Linux desktop reference informed the palette only.
+Astro generates responsive WebP delivery images; the PNG originals remain
+unchanged for full-size inspection. CSS crops blank right-hand areas in the hero,
+research and terminal-answer detail views. Captions identify these as details,
+and each has keyboard-accessible enlargement plus a direct-image fallback when
+JavaScript is off. Each source screenshot is displayed once. The redesign uses
+an editorial split hero, a wide inspection capture, an asymmetric research/answer
+pair, a compact architecture diagram, provider rows and a separate status view.
+The supplied mockup informed content coverage, not its blue styling or claims.
 
 ## Source preview downloads
 
