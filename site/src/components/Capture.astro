@@ -8,7 +8,7 @@ interface Props {
   label: string;
   caption: string;
   eager?: boolean;
-  variant?: 'standard' | 'hero' | 'output' | 'status' | 'research';
+  variant?: 'standard' | 'hero' | 'output' | 'status' | 'research' | 'inspection';
   sizes?: string;
 }
 const {
@@ -21,5 +21,5 @@ const {
   <a class="capture-image" href={image.src} data-capture-link data-caption={caption} aria-label={`View full ${label.toLowerCase()} screenshot`}>
     <Image src={image} alt={alt} widths={[480, 800, 1200, image.width]} sizes={sizes} quality={90} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />
   </a>
-  <figcaption>{caption}</figcaption>
+  <figcaption>{caption}{variant === 'inspection' && <span class="mobile-caption-note"> Detail view on small screens. Enlarge for the complete capture.</span>}</figcaption>
 </figure>

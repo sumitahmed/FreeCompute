@@ -134,6 +134,8 @@
   .capture-hero .capture-image img { width: 1200px; max-width: none; }
   .capture-output .capture-image img { width: 1100px; max-width: none; }
   .capture-research .capture-image img { width: 1100px; max-width: none; }
+  .capture-status .capture-image img { width: 1000px; max-width: none; }
+  .mobile-caption-note { display: none; }
   .why { display: grid; gap: 32px 80px; }
   .why h2 { max-width: 570px; margin-top: 20px; }
   .why h2 span { color: var(--muted); }
@@ -319,6 +321,8 @@
     .capture-bar a { gap: 6px; }
     .capture figcaption { padding: 12px; }
     .capture-research .capture-image img, .capture-output .capture-image img { width: 1000px; }
+    .capture-inspection .capture-image img { width: 1200px; max-width: none; }
+    .mobile-caption-note { display: inline; }
     .scene-heading h3 { font-size: 23px; }
     .workflow-secondary { margin-top: 40px; }
     .architecture-node { padding: 20px; }
