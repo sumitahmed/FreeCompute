@@ -77,15 +77,3 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')
     }
   });
 }
-
-document.querySelector<HTMLButtonElement>('[data-copy-source-link]')?.addEventListener('click', async () => {
-  const status = document.querySelector<HTMLElement>('[data-source-link-status]');
-  const source = document.querySelector<HTMLAnchorElement>('[data-source-download]');
-  try {
-    if (!source || !navigator.clipboard) throw new Error('Clipboard unavailable');
-    await navigator.clipboard.writeText(source.href);
-    if (status) status.textContent = 'Source download link copied.';
-  } catch {
-    if (status) status.textContent = 'Use the source download link above.';
-  }
-});

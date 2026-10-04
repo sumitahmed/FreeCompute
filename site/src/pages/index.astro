@@ -1,0 +1,85 @@
+---
+import Page from '../layouts/Page.astro';
+import Icon from '../components/Icon.astro';
+import SectionHeading from '../components/SectionHeading.astro';
+import Capture from '../components/Capture.astro';
+import Architecture from '../components/Architecture.astro';
+import Gallery from '../components/Gallery.astro';
+import Setup from '../components/Setup.astro';
+import coding from '../assets/coding.png';
+import download from '../data/downloads.json';
+const base = import.meta.env.BASE_URL;
+const github = 'https://github.com/sumitahmed/FreeCompute';
+---
+<Page>
+  <section class="hero container" aria-labelledby="hero-title">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow hero-eyebrow"><span class="eyebrow-line" aria-hidden="true"></span> Local tools. Remote inference.</p>
+        <h1 id="hero-title">Your workspace.<br /><span>More compute.</span></h1>
+      </div>
+      <div class="hero-description">
+        <p class="hero-lead">A local CLI agent for<br class="desktop-break" /> open-weight AI.</p>
+        <p>Run the model on a GPU worker. Read, edit and test in the workspace on your PC, with approval before changes and commands.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#setup">Set up FreeCompute <Icon name="arrow" /></a>
+          <a class="text-link" href={github}>View on GitHub <Icon name="external" /></a>
+        </div>
+        <p class="hero-version">v{download.version} beta / CLI-first</p>
+      </div>
+    </div>
+    <div class="hero-proof">
+      <div class="proof-label"><span>THE PRODUCT, IN USE</span><span>Actual CLI capture · 04 Oct 2026</span></div>
+      <Capture image={coding} eager label="FreeCompute / coding" alt="Actual FreeCompute CLI returning Java prime-number code through the configured Kaggle Qwen worker." caption="A connected Qwen GGUF worker returns code to the local CLI. Tools and permissions are handled on your PC." />
+    </div>
+    <ul class="hero-principles" aria-label="Product summary"><li>Local files, tools & approvals</li><li>Configurable inference workers</li><li>Open source · Apache 2.0</li></ul>
+  </section>
+
+  <section class="section why container" aria-labelledby="why-title">
+    <div><p class="eyebrow"><span class="section-index">01</span> Why FreeCompute</p><h2 id="why-title">The model can run elsewhere.<br /><span>Your workflow stays here.</span></h2></div>
+    <div class="why-copy"><p>A capable model can need more VRAM than your PC has. A cloud notebook provides compute, but your project still lives on your machine.</p><p>FreeCompute connects those two places. Work from your terminal, use a configured inference worker, and keep file operations, commands and saved sessions under local control.</p><a class="text-link" href="#how-it-works">See the architecture <Icon name="arrow" /></a></div>
+  </section>
+
+  <Architecture />
+  <Gallery />
+
+  <section id="compute" class="section container" aria-labelledby="compute-title">
+    <SectionHeading index="04" label="Compute options" title="Bring the compute that fits." id="compute-title"><p>The worker determines what you can run. Hardware, model size, quantization and provider runtime allocation all matter.</p></SectionHeading>
+    <div class="compute-table-wrap" tabindex="0" role="region" aria-label="Compute configuration options">
+      <table class="compute-table">
+        <caption class="sr-only">Current deployment paths and configuration requirements</caption>
+        <thead><tr><th scope="col">Compute</th><th scope="col">Current path</th><th scope="col">What to know</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Kaggle<span class="table-subtitle">Remote notebook</span></th><td><span class="table-status">Documented setup</span></td><td>The current notebook targets two Tesla T4 GPUs and a pinned Qwen GGUF profile. Keep the session running and use its fresh worker URL.</td></tr>
+          <tr><th scope="row">Google Colab<span class="table-subtitle">Manual configuration</span></th><td>Bring a compatible worker</td><td>No maintained Colab deployment notebook is included. You must configure a matching inference endpoint and model profile yourself.</td></tr>
+          <tr><th scope="row">Local / private<span class="table-subtitle">Your own hardware</span></th><td>Configure the route</td><td>Use a compatible engine endpoint and worker profile. Your hardware and selected model determine capacity.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="compute-notes">
+      <p><span class="mono">MODELS</span>The captures show the repository’s Qwen 27B GGUF configuration with llama.cpp. Other models need compatible profiles and sufficient hardware. Declared context capacity is not full-input certification.</p>
+      <p><span class="mono">IMAGES</span>A separate ComfyUI adapter uses the existing fixed Qwen GGUF workflow. It needs matching nodes, model files and its own authenticated gateway. Live image deployment remains unverified.</p>
+    </div>
+    <p class="provider-note">GPU availability, session duration and quota depend on your provider and account. FreeCompute does not supply or guarantee them.</p>
+  </section>
+
+  <section id="security" class="section security container" aria-labelledby="security-title">
+    <SectionHeading index="05" label="Privacy & control" title="Know what crosses the connection." id="security-title"><p>Local-first describes where authority lives. The inference host still processes the input you send.</p></SectionHeading>
+    <dl class="security-list">
+      <div><dt><span aria-hidden="true">01 /</span> On your machine</dt><dd>File tools, permissions, commands, journals and undo run locally. The inference worker has no direct local filesystem or terminal endpoint.</dd></div>
+      <div><dt><span aria-hidden="true">02 /</span> Sent to the model</dt><dd>Prompts, selected file contents and tool results reach the inference host. HTTPS encrypts transit; it does not hide that input from the host.</dd></div>
+      <div><dt><span aria-hidden="true">03 /</span> With your approval</dt><dd>Edits, writes, commands and undo require explicit approval. Approved commands run with your user privileges; they are not in an OS sandbox.</dd></div>
+    </dl>
+    <a class="text-link" href={`${base}guide/#safety`}>Read the safety notes <Icon name="arrow" /></a>
+  </section>
+
+  <div class="built-with container"><p class="eyebrow">Under the hood</p><ul aria-label="FreeCompute technologies"><li>Python</li><li>prompt_toolkit</li><li>Rich</li><li>llama.cpp</li><li>SQLite</li></ul><p>Local Core. Configured workers.</p></div>
+  <Setup />
+
+  <dialog id="capture-dialog" aria-labelledby="capture-dialog-title">
+    <div class="dialog-heading"><h2 id="capture-dialog-title">Actual CLI screenshot</h2><button type="button" data-dialog-close autofocus aria-label="Close screenshot"><Icon name="close" /></button></div>
+    <div class="dialog-image"><img alt="Actual FreeCompute CLI screenshot" /></div>
+    <p data-dialog-caption></p>
+  </dialog>
+  <script>import '../scripts/interactions';</script>
+</Page>
