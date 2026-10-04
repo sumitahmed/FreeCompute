@@ -6,7 +6,7 @@ import '../styles/global.css';
 import Icon from '../components/Icon.astro';
 interface Props { title?: string; description?: string; }
 const {
-  title = 'FreeCompute — Your workspace. More compute.',
+  title = 'FreeCompute — More compute. Same workspace.',
   description = 'A local CLI agent for open-weight AI. Connect a GPU inference worker while keeping file tools, commands, approvals and saved sessions on your PC.',
 } = Astro.props;
 const base = import.meta.env.BASE_URL;
@@ -19,7 +19,7 @@ const github = 'https://github.com/sumitahmed/FreeCompute';
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#151d29" />
+    <meta name="theme-color" content="#0d0d0e" />
     <meta name="color-scheme" content="dark" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
@@ -40,17 +40,18 @@ const github = 'https://github.com/sumitahmed/FreeCompute';
         <span>FreeCompute</span>
       </a>
       <nav aria-label="Main navigation">
-        <a href={`${base}#how-it-works`}>How it works</a>
-        <a href={`${base}#inside`}>Inside the CLI</a>
-        <a href={`${base}#setup`}>Setup</a>
-        <a class="nav-github" href={github}><Icon name="github" /> <span>GitHub</span><Icon name="external" /></a>
+        <a href={`${base}#why`}>Why FreeCompute</a>
+        <a href={`${base}#inside`}>Workflow</a>
+        <a href={`${base}#how-it-works`}>Architecture</a>
+        <a class="nav-github" href={github}>GitHub <Icon name="external" /></a>
+        <a class="nav-start" href={`${base}#setup`}>Get started <Icon name="arrow" /></a>
       </nav>
     </header>
     <main id="main" tabindex="-1"><slot /></main>
     <footer class="site-footer container">
       <div>
         <a class="brand" href={base}><img class="brand-mark" src={`${base}favicon.svg`} width="28" height="28" alt="" />FreeCompute</a>
-        <p>Open-weight models. A local workflow.</p>
+        <p>Remote model. Local workflow.</p>
       </div>
       <nav aria-label="Footer navigation">
         <a href={github}>GitHub <Icon name="external" /></a>

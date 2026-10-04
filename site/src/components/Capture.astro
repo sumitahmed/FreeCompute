@@ -8,13 +8,18 @@ interface Props {
   label: string;
   caption: string;
   eager?: boolean;
+  variant?: 'standard' | 'hero' | 'output' | 'status';
+  sizes?: string;
 }
-const { image, alt, label, caption, eager = false } = Astro.props;
+const {
+  image, alt, label, caption, eager = false, variant = 'standard',
+  sizes = '(max-width: 767px) calc(100vw - 40px), (max-width: 1320px) calc(100vw - 96px), 1200px',
+} = Astro.props;
 ---
-<figure class:list={['capture', { 'capture-hero': eager }]}>
+<figure class:list={['capture', 'capture-' + variant]}>
   <div class="capture-bar"><span>{label}</span><a href={image.src} data-capture-link data-caption={caption} aria-label={`Enlarge ${label.toLowerCase()} screenshot`}><Icon name="expand" /><span>Enlarge</span></a></div>
   <a class="capture-image" href={image.src} data-capture-link data-caption={caption} aria-label={`View full ${label.toLowerCase()} screenshot`}>
-    <Image src={image} alt={alt} widths={[480, 800, 1200, image.width]} sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1312px) calc(100vw - 96px), 1216px" quality={90} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />
+    <Image src={image} alt={alt} widths={[480, 800, 1200, image.width]} sizes={sizes} quality={90} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />
   </a>
   <figcaption>{caption}</figcaption>
 </figure>

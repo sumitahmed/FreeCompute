@@ -1,60 +1,31 @@
 ---
 import Capture from './Capture.astro';
 import SectionHeading from './SectionHeading.astro';
-import coding from '../assets/coding.png';
 import inspection from '../assets/inspection.png';
 import research from '../assets/research.png';
-import status from '../assets/status.png';
-const scenes = [
-  {
-    id: 'coding', title: 'Write code', command: 'A prompt, then code',
-    description: 'Streamed answers with readable code and Markdown in your terminal.',
-    image: coding, label: 'Coding output',
-    alt: 'Actual FreeCompute CLI: a request for the first ten primes in Java and syntax-highlighted First10Primes code from the configured Qwen worker.',
-    caption: 'Java code returned by the configured Qwen GGUF worker. This capture shows generated output; it does not show the Java program being executed.',
-  },
-  {
-    id: 'inspection', title: 'Inspect & test', command: 'Read → propose → approve',
-    description: 'Read project files. Review proposed edits and commands before local execution.',
-    image: inspection, label: 'File inspection & proposed test',
-    alt: 'Actual FreeCompute CLI: local list and read tool activity, two calculator tests, a proposed Python unittest command, and a model request for permission.',
-    caption: 'The agent inspects calculator files and proposes a test command. Permission is pending in this capture; this is not a test-pass receipt.',
-  },
-  {
-    id: 'research', title: 'Search the web', command: 'search_web / fetch_url',
-    description: 'Search and fetch public pages through local tools. Check sources and model answers.',
-    image: research, label: 'Web-tool activity',
-    alt: 'Actual FreeCompute CLI: the search_web tool completes a football-related query before the model returns an answer.',
-    caption: 'A real search_web event followed by model output. The answer in the screenshot is not independently fact-checked or endorsed.',
-  },
-  {
-    id: 'status', title: 'Check your worker', command: '/status',
-    description: 'See available hardware observations, sample age, and what remains unknown.',
-    image: status, label: 'Worker status',
-    alt: 'Actual FreeCompute status: a healthy Kaggle worker, two observed Tesla T4 GPUs with VRAM usage, and unknown session limits, CPU, RAM and weekly quota.',
-    caption: 'Two Tesla T4 GPUs observed in this session. Unknown CPU, RAM, provider quota and session limits remain explicitly unknown.',
-  },
-];
+import output from '../assets/output.png';
 ---
-<section id="inside" class="section container" aria-labelledby="inside-title">
-  <SectionHeading index="03" label="Inside the CLI" title="Less ceremony. More actual work." id="inside-title">
-    <p>Real captures from a connected Kaggle session. Choose a view, or open a screenshot to inspect it.</p>
-  </SectionHeading>
-  <div class="gallery" data-gallery>
-    <nav class="gallery-nav" aria-label="CLI screenshots" data-gallery-nav>
-      {scenes.map((scene, index) => <a class="gallery-tab" href={`#scene-${scene.id}`} id={`tab-${scene.id}`} data-gallery-tab data-panel={`scene-${scene.id}`}>
-        <span class="gallery-tab-index" aria-hidden="true">0{index + 1}</span>
-        <span><strong>{scene.title}</strong><span class="gallery-tab-command">{scene.command}</span><span class="gallery-tab-description">{scene.description}</span></span>
-      </a>)}
-    </nav>
-    <div class="gallery-panels">
-      {scenes.map((scene) => <div id={`scene-${scene.id}`} data-gallery-panel>
-        <Capture image={scene.image} alt={scene.alt} label={scene.label} caption={scene.caption} />
-      </div>)}
-    </div>
+<section id="inside" class="section workflow container" aria-labelledby="inside-title">
+  <div class="section-split">
+    <SectionHeading index="02" label="Real terminal workflow" title="What it actually feels like." id="inside-title" />
+    <p class="section-aside">Real captures from a connected Kaggle session. Code, local tools and model responses, in the terminal you already use.</p>
+  </div>
+  <article id="scene-inspection" class="workflow-primary" aria-labelledby="inspection-title">
+    <div class="scene-heading"><div><p class="eyebrow">01 / INSPECT · PROPOSE · APPROVE</p><h3 id="inspection-title">Read the project. Review the next step.</h3></div><p>Local file reads, a proposed test command, and a request for permission before execution.</p></div>
+    <Capture image={inspection} label="File inspection & proposed test" alt="Actual FreeCompute CLI: local list and read tool activity, two calculator tests, a proposed Python unittest command, and a model request for permission." caption="The agent inspects calculator files and proposes a test command. Permission is pending in this capture; this is not a test-pass receipt." />
+  </article>
+  <div class="workflow-secondary">
+    <article id="scene-research" class="workflow-research" aria-labelledby="research-title">
+      <div class="scene-heading"><div><p class="eyebrow">02 / WEB TOOLS</p><h3 id="research-title">Research from the same prompt.</h3></div></div>
+      <Capture image={research} sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1320px) 60vw, 720px" label="Web-tool activity" alt="Actual FreeCompute CLI: the search_web tool completes a football-related query before the model returns an answer." caption="A real search_web event followed by model output. The answer is not independently fact-checked or endorsed." />
+    </article>
+    <article id="scene-output" class="workflow-output" aria-labelledby="output-title">
+      <div class="scene-heading"><div><p class="eyebrow">03 / ANSWERS IN YOUR TERMINAL</p><h3 id="output-title">Code, then an explanation.</h3></div></div>
+      <Capture image={output} variant="output" sizes="1100px" label="Terminal answer" alt="Actual FreeCompute CLI answer with a list of the first ten primes, a code explanation and a saved local session reference." caption="A detail of the model’s answer and explanation, not a program-execution receipt. Enlarge for the complete capture." />
+    </article>
   </div>
   <div class="workflow-notes">
-    <div><p class="mono">/sessions · /resume · /diff · /undo</p><h3>Pick up where you left off.</h3><p>Saved conversations, recorded changes and approved undo are managed by the local Core. Reopening a completed task does not replay its effects.</p></div>
-    <div><p class="mono">/model · /workers · /skills</p><h3>A workflow you can configure.</h3><p>Choose configured model and worker routes, or use bundled and project skills. Type <code>/</code> for the live command menu.</p></div>
+    <div><p class="mono">/sessions · /resume · /diff · /undo</p><h3>Pick up where you left off.</h3><p>The local Core saves conversations and recorded changes. Resume a session or review an approved undo without replaying completed effects.</p></div>
+    <div><p class="mono">/model · /workers · /skills</p><h3>Make the route yours.</h3><p>Choose configured model and worker routes. Use bundled, user or project skills. Type <code>/</code> for the live command menu.</p></div>
   </div>
 </section>

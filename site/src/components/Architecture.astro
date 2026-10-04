@@ -1,34 +1,33 @@
 ---
 import SectionHeading from './SectionHeading.astro';
+import Icon from './Icon.astro';
 ---
 <section id="how-it-works" class="section container" aria-labelledby="architecture-title">
-  <SectionHeading index="02" label="The architecture" title="Local authority. Remote inference." id="architecture-title">
-    <p>Two clear responsibilities, connected through an authenticated worker endpoint.</p>
-  </SectionHeading>
+  <div class="section-split">
+    <SectionHeading index="03" label="The architecture" title="Local authority. Remote inference." id="architecture-title" />
+    <p class="section-aside">Two clear responsibilities, connected through an authenticated worker endpoint.</p>
+  </div>
   <figure class="architecture">
     <div class="architecture-flow">
       <div class="architecture-node">
-        <span class="node-label"><span class="node-symbol" aria-hidden="true">⌘</span> ON YOUR PC</span>
-        <h3>FreeCompute CLI</h3>
-        <p class="node-subtitle">Your workspace + local Core</p>
+        <p class="node-label"><Icon name="monitor" /> ON YOUR PC</p>
+        <h3>FreeCompute CLI + Core</h3>
+        <p class="node-subtitle">Your workspace. Your authority.</p>
         <ul><li>File reads and approved edits</li><li>Approved commands and tests</li><li>Permissions, sessions and undo</li></ul>
       </div>
       <div class="architecture-link" aria-hidden="true">
-        <span>Model input</span><span class="flow-arrow">⟶</span>
-        <span class="flow-arrow flow-arrow-back">⟵</span><span>Responses + tool proposals</span>
+        <span>Authenticated connection</span>
+        <div class="flow-out"><span>Model input</span><Icon name="arrow" /></div>
+        <div class="flow-back"><Icon name="arrow" /><span>Text + tool proposals</span></div>
       </div>
-      <div class="architecture-node architecture-node-remote">
-        <span class="node-label"><span class="node-symbol" aria-hidden="true">▤</span> ON YOUR WORKER</span>
-        <h3>The model + GPU</h3>
+      <div class="architecture-node">
+        <p class="node-label"><Icon name="server" /> ON YOUR WORKER</p>
+        <h3>Model + GPU</h3>
         <p class="node-subtitle">llama.cpp + authenticated supervisor</p>
         <ul><li>Receives inference messages</li><li>Runs the configured model</li><li>Returns text and proposed tool calls</li></ul>
       </div>
     </div>
-    <figcaption>Your CLI sends model input and receives responses. The worker proposes tool calls; the local Core validates and executes them. HTTPS encrypts traffic in transit.</figcaption>
+    <figcaption>The worker proposes tool calls. The local Core validates and executes them, with approval for changes and commands. Use HTTPS or a secure private transport for the connection.</figcaption>
   </figure>
-  <ol class="steps">
-    <li><span class="step-number">01</span><h3>Install on your PC.</h3><p>Run the Python CLI against your chosen project. Your local machine manages tools and history.</p></li>
-    <li><span class="step-number">02</span><h3>Connect a worker.</h3><p>Start the documented Kaggle notebook or configure a compatible endpoint. Pass its fresh URL to the CLI.</p></li>
-    <li><span class="step-number">03</span><h3>Review, then run.</h3><p>Ask for a task. Inspect proposed edits and commands, approve the ones you want, and check the result.</p></li>
-  </ol>
+  <p class="architecture-footnote"><span class="mono">THE BOUNDARY</span> The worker processes model input. It does not operate your local terminal or access your project directly.</p>
 </section>
